@@ -1,4 +1,5 @@
 #include "interpreter.h"
+#include "image_sampler.h"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -127,10 +128,17 @@ void Interpreter::init_memory() {
         auto* pt = static_cast<const PointerType*>(ptr_type);
         const SpvType* pointee = pt->pointee.get();
         Value v;
-        if (opts_.init_pattern == InitPattern::Zero)
+        // Image, Sampler, and SampledImage types are opaque handles.
+        // Store a self-referential uint32 as the handle so OpLoad returns it.
+        if (pointee && (pointee->kind == SpvType::Kind::Image ||
+                        pointee->kind == SpvType::Kind::Sampler ||
+                        pointee->kind == SpvType::Kind::SampledImage)) {
+            v = Value::make_u32(id);
+        } else if (opts_.init_pattern == InitPattern::Zero) {
             v = zero_for_type(pointee, *module_);
-        else
+        } else {
             v = pattern_for_type(pointee, *module_, opts_.init_value);
+        }
         memory_[id] = std::move(v);
         // Also expose a pointer-to-variable in id_map_ so that OpAccessChain
         // and OpLoad/OpStore can look up the variable by its result id.
@@ -299,6 +307,20 @@ Result<void> Interpreter::begin(const std::string& entry_name) {
         }
     }
 
+    // Build image variable map: var_id → image staging key.
+    image_var_map_.clear();
+    for (auto& [key, _] : image_staging_) {
+        uint32_t s = key >> 16, b = key & 0xFFFF;
+        for (auto& [id, var] : module_->variables) {
+            auto& dset = module_->decorations_of(id);
+            if (dset.get(SpvDecorationDescriptorSet) == s &&
+                dset.get(SpvDecorationBinding) == b) {
+                image_var_map_[id] = key;
+                break;
+            }
+        }
+    }
+
     // Evaluate spec-constants.
     eval_spec_constants();
 
@@ -358,6 +380,24 @@ Result<void> Interpreter::set_input_location(uint32_t location, Value value) {
         }
     }
     return Result<void>::err("No Input variable at location=" + std::to_string(location));
+}
+
+Result<void> Interpreter::set_image(uint32_t set, uint32_t binding, std::string_view path) {
+    ImageData data = load_image(path);
+    if (!data.valid())
+        return Result<void>::err("Failed to load image: " + std::string(path));
+    uint32_t key = (set << 16) | binding;
+    image_staging_[key] = std::move(data);
+    // Also update the var map immediately in case begin() already ran.
+    for (auto& [id, var] : module_->variables) {
+        auto& dset = module_->decorations_of(id);
+        if (dset.get(SpvDecorationDescriptorSet) == set &&
+            dset.get(SpvDecorationBinding) == binding) {
+            image_var_map_[id] = key;
+            break;
+        }
+    }
+    return Result<void>{};
 }
 
 Result<void> Interpreter::set_builtin(SpvBuiltIn builtin, Value value) {
@@ -1179,6 +1219,135 @@ StopReason Interpreter::exec_control_flow(const Instruction& inst) {
     }
 }
 
+// ---- image instructions ----------------------------------------------------
+
+StopReason Interpreter::exec_image(const Instruction& inst) {
+    auto get = [&](uint32_t idx) -> Value { return lookup(inst.operand(idx)); };
+
+    switch (inst.opcode) {
+        case SpvOpSampledImage: {
+            // %result = OpSampledImage %SampledImageType %image %sampler
+            // Keep the image handle; ignore sampler state (default bilinear assumed).
+            id_map_[inst.result_id] = get(0);
+            break;
+        }
+
+        case SpvOpImage: {
+            // %result = OpImage %ImageType %sampled_image
+            // Extract underlying image handle from a combined sampled-image.
+            id_map_[inst.result_id] = get(0);
+            break;
+        }
+
+        case SpvOpImageSampleImplicitLod:
+        case SpvOpImageSampleExplicitLod: {
+            // %result = OpImageSampleXxxLod %ResType %sampled_image %coord [ImageOperands]
+            Value si_handle = get(0);
+            Value coord     = get(1);
+            uint32_t var_id = si_handle.scalar.u32;
+
+            auto it = image_var_map_.find(var_id);
+            if (it == image_var_map_.end()) {
+                diagnostics.push_back("OpImageSample*: no image bound at variable %" +
+                                       std::to_string(var_id) + "; returning zero");
+                auto* rt = module_->type_of(inst.type_id);
+                id_map_[inst.result_id] = zero_for_type(rt, *module_);
+                break;
+            }
+            const ImageData& img = image_staging_.at(it->second);
+            float u = 0.0f, v = 0.0f;
+            if (coord.kind == Value::Kind::Composite && coord.elements.size() >= 2) {
+                u = coord.elements[0].scalar.f32;
+                v = coord.elements[1].scalar.f32;
+            } else if (coord.kind == Value::Kind::Float32) {
+                u = coord.scalar.f32;
+            }
+            float rgba[4];
+            img.sample_bilinear(u, v, rgba);
+            id_map_[inst.result_id] = Value::make_composite({
+                Value::make_f32(rgba[0]), Value::make_f32(rgba[1]),
+                Value::make_f32(rgba[2]), Value::make_f32(rgba[3])
+            });
+            break;
+        }
+
+        case SpvOpImageFetch:
+        case SpvOpImageRead: {
+            // %result = OpImageFetch/Read %ResType %image %coord [ImageOperands]
+            Value img_handle = get(0);
+            Value coord      = get(1);
+            uint32_t var_id  = img_handle.scalar.u32;
+
+            auto it = image_var_map_.find(var_id);
+            if (it == image_var_map_.end()) {
+                diagnostics.push_back("OpImageFetch/Read: no image bound at variable %" +
+                                       std::to_string(var_id) + "; returning zero");
+                auto* rt = module_->type_of(inst.type_id);
+                id_map_[inst.result_id] = zero_for_type(rt, *module_);
+                break;
+            }
+            const ImageData& img = image_staging_.at(it->second);
+            int x = 0, y = 0;
+            if (coord.kind == Value::Kind::Composite && coord.elements.size() >= 2) {
+                const Value& cx = coord.elements[0];
+                const Value& cy = coord.elements[1];
+                x = cx.kind == Value::Kind::Int32  ? cx.scalar.i32 :
+                    cx.kind == Value::Kind::UInt32 ? static_cast<int>(cx.scalar.u32) : 0;
+                y = cy.kind == Value::Kind::Int32  ? cy.scalar.i32 :
+                    cy.kind == Value::Kind::UInt32 ? static_cast<int>(cy.scalar.u32) : 0;
+            }
+            float rgba[4];
+            img.fetch_texel(x, y, rgba);
+            id_map_[inst.result_id] = Value::make_composite({
+                Value::make_f32(rgba[0]), Value::make_f32(rgba[1]),
+                Value::make_f32(rgba[2]), Value::make_f32(rgba[3])
+            });
+            break;
+        }
+
+        case SpvOpImageWrite: {
+            // OpImageWrite %image %coord %texel [ImageOperands] — no result id.
+            // Not needed for debugging read-only inputs; silently ignore.
+            break;
+        }
+
+        case SpvOpImageQuerySizeLod:
+        case SpvOpImageQuerySize: {
+            // %result = OpImageQuerySizeLod %ResType %image [%lod]
+            Value img_handle = get(0);
+            uint32_t var_id  = img_handle.scalar.u32;
+            int32_t  w = 1, h = 1;
+            auto it = image_var_map_.find(var_id);
+            if (it != image_var_map_.end()) {
+                const ImageData& img = image_staging_.at(it->second);
+                w = img.width;
+                h = img.height;
+            }
+            id_map_[inst.result_id] = Value::make_composite({
+                Value::make_u32(static_cast<uint32_t>(w)),
+                Value::make_u32(static_cast<uint32_t>(h))
+            });
+            break;
+        }
+
+        case SpvOpImageQueryLevels:
+        case SpvOpImageQuerySamples:
+            // Return 1 mip level / 1 sample (no mip chain or MSAA in our model).
+            id_map_[inst.result_id] = Value::make_u32(1);
+            break;
+
+        default:
+            diagnostics.push_back("Unimplemented image opcode " + std::to_string(inst.opcode) +
+                                   "; returning zero");
+            if (inst.result_id) {
+                auto* rt = module_->type_of(inst.type_id);
+                id_map_[inst.result_id] = zero_for_type(rt, *module_);
+            }
+    }
+    advance_pc();
+    return StopReason::Step;
+}
+
 // ---- derivative instructions -----------------------------------------------
 
 // Return a zero value of the same scalar/vector shape as `v`.
@@ -1332,6 +1501,20 @@ StopReason Interpreter::execute_one(const Instruction& inst) {
         case SpvOpPhi: case SpvOpReturn: case SpvOpReturnValue: case SpvOpUnreachable:
         case SpvOpFunctionCall: case SpvOpSelectionMerge: case SpvOpLoopMerge:
             return exec_control_flow(inst);
+
+        // Image instructions
+        case SpvOpSampledImage:
+        case SpvOpImage:
+        case SpvOpImageSampleImplicitLod: case SpvOpImageSampleExplicitLod:
+        case SpvOpImageSampleDrefImplicitLod: case SpvOpImageSampleDrefExplicitLod:
+        case SpvOpImageSampleProjImplicitLod: case SpvOpImageSampleProjExplicitLod:
+        case SpvOpImageSampleProjDrefImplicitLod: case SpvOpImageSampleProjDrefExplicitLod:
+        case SpvOpImageFetch:
+        case SpvOpImageGather: case SpvOpImageDrefGather:
+        case SpvOpImageRead: case SpvOpImageWrite:
+        case SpvOpImageQuerySizeLod: case SpvOpImageQuerySize:
+        case SpvOpImageQueryLevels: case SpvOpImageQuerySamples:
+            return exec_image(inst);
 
         // Derivative instructions (return zero in single-invocation mode)
         case SpvOpDPdx: case SpvOpDPdy: case SpvOpFwidth:

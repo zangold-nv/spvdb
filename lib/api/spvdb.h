@@ -58,6 +58,10 @@ Result<void> set_descriptor(Session&, uint32_t set, uint32_t binding,
                              std::span<const std::byte> data);
 Result<void> set_descriptor_json(Session&, uint32_t set, uint32_t binding,
                                   std::string_view json);
+// Bind a sampled-image or storage-image descriptor from an on-disk file.
+// Supports PNG, BMP, JPG, TGA, HDR via stb_image; loaded as RGBA float.
+Result<void> set_image(Session&, uint32_t set, uint32_t binding,
+                       std::string_view image_path);
 // Bind a vertex/fragment Input variable by its Location decoration.
 // Equivalent to reading a per-vertex attribute or per-fragment interpolant.
 Result<void> set_input_location(Session&, uint32_t location, Value value);

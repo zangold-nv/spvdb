@@ -1,8 +1,10 @@
 #pragma once
 #include "../module/module.h"
+#include "image_sampler.h"
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -81,6 +83,8 @@ public:
     // --- Inputs ---
     Result<void> set_descriptor(uint32_t set, uint32_t binding,
                                  const Value& value);
+    // Bind a sampled-image or storage-image descriptor from an on-disk file.
+    Result<void> set_image(uint32_t set, uint32_t binding, std::string_view path);
     // Bind a vertex/fragment Input variable by its Location decoration.
     Result<void> set_input_location(uint32_t location, Value value);
     Result<void> set_builtin(SpvBuiltIn builtin, Value value);
@@ -153,6 +157,12 @@ private:
     // Specialization constant overrides: spec-id → Value.
     std::unordered_map<uint32_t, Value> spec_overrides_;
 
+    // Staged image bindings: (set << 16 | binding) → ImageData.
+    // Persists across begin() calls; images survive init_memory().
+    std::unordered_map<uint32_t, ImageData> image_staging_;
+    // var_id → staging_key; rebuilt in begin() from image_staging_ + module variables.
+    std::unordered_map<uint32_t, uint32_t>  image_var_map_;
+
     // Call stack.
     std::vector<CallFrame> call_stack_;
 
@@ -200,6 +210,7 @@ private:
     StopReason exec_control_flow(const Instruction& inst);
     StopReason exec_ext_inst(const Instruction& inst);
     StopReason exec_derivative(const Instruction& inst);
+    StopReason exec_image(const Instruction& inst);
 
     // Move PC forward to the next instruction in the current block.
     // Returns false if the block is exhausted (should not happen mid-block).

@@ -15,6 +15,7 @@ set(SPVASM_SOURCES
     ${SPIRV_DIR}/spec_const.spvasm
     ${SPIRV_DIR}/passthrough_frag.spvasm
     ${SPIRV_DIR}/deriv_frag.spvasm
+    ${SPIRV_DIR}/image_sample_frag.spvasm
 )
 
 set(SPV_BINARIES "")
@@ -44,10 +45,12 @@ add_dependencies(spvdb_tests spvdb_test_spirv)
 
 target_link_libraries(spvdb_tests PRIVATE spvdb Catch2::Catch2WithMain)
 
-# Pass the directory containing assembled .spv files to the test binary.
+# Pass the directory containing assembled .spv files and a writable temp dir.
 target_compile_definitions(spvdb_tests PRIVATE
     SPIRV_TEST_DIR="${SPIRV_BIN_DIR}"
+    SPVDB_TEST_TMP_DIR="${CMAKE_CURRENT_BINARY_DIR}/tmp"
 )
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tmp")
 
 include(Catch)
 catch_discover_tests(spvdb_tests)

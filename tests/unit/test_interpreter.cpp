@@ -1,8 +1,10 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include "../../lib/api/spvdb.h"
 #include "../../lib/api/spvdb_session.h"
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -14,6 +16,33 @@ using namespace spvdb;
 
 static std::string spv(const char* name) {
     return std::string(SPIRV_TEST_DIR) + "/" + name + ".spv";
+}
+
+// Write a minimal 1×1 24-bit BMP with the given RGB values.
+// Returns the file path on success, empty string on failure.
+static std::string write_test_bmp_1x1(const char* filename,
+                                       uint8_t r, uint8_t g, uint8_t b) {
+    std::string path = std::string(SPVDB_TEST_TMP_DIR) + "/" + filename;
+    // BMP format: file header (14) + info header (40) + pixel data (4) = 58 bytes.
+    // Pixels are stored BGR with row padded to 4-byte boundary.
+    uint8_t bmp[58] = {};
+    // File header
+    bmp[0] = 'B'; bmp[1] = 'M';
+    bmp[2] = 58;                        // file size (little-endian)
+    bmp[10] = 54;                       // pixel data offset
+    // Info header (BITMAPINFOHEADER)
+    bmp[14] = 40;                       // header size
+    bmp[18] = 1;                        // width = 1
+    bmp[22] = 1;                        // height = 1 (positive = bottom-up)
+    bmp[26] = 1;                        // planes
+    bmp[28] = 24;                       // bits per pixel
+    bmp[34] = 4;                        // image size (1 pixel + 1 padding byte × 2, rounded to 4)
+    // Pixel data: BGR order + 1 padding byte
+    bmp[54] = b; bmp[55] = g; bmp[56] = r; bmp[57] = 0;
+    std::ofstream f(path, std::ios::binary);
+    if (!f) return {};
+    f.write(reinterpret_cast<const char*>(bmp), sizeof(bmp));
+    return path;
 }
 
 // Build a JSON array string from a vector of uint32 values, e.g. "[1, 2, 3]".
@@ -275,6 +304,65 @@ TEST_CASE("interpreter: fragment passthrough — input location 0 copied to outp
     CHECK(outs[0].value.elements[1].scalar.f32 == 0.5f);
     CHECK(outs[0].value.elements[2].scalar.f32 == 0.25f);
     CHECK(outs[0].value.elements[3].scalar.f32 == 1.0f);
+}
+
+TEST_CASE("interpreter: image sampling — no image bound returns zero without panic") {
+    auto mod = load_module_from_file(spv("image_sample_frag"));
+    REQUIRE(mod);
+
+    auto sess = create_session(*mod, "main");
+    REQUIRE(sess);
+
+    // UV = (0.5, 0.5); no image bound at set=0, binding=0.
+    Value uv = Value::make_composite({Value::make_f32(0.5f), Value::make_f32(0.5f)});
+    REQUIRE(set_input_location(**sess, 0, uv));
+
+    auto reason = run(**sess);
+    if (reason == StopReason::Panic)
+        FAIL("Panic: " + panic_message(**sess));
+    REQUIRE(reason == StopReason::EntryFinished);
+
+    // Output should be zero (the unbound-image diagnostic path).
+    auto outs = output_variables(**sess);
+    REQUIRE(outs.size() == 1);
+    REQUIRE(outs[0].value.kind == Value::Kind::Composite);
+    REQUIRE(outs[0].value.elements.size() == 4);
+    CHECK(outs[0].value.elements[0].scalar.f32 == 0.0f);
+    CHECK(outs[0].value.elements[1].scalar.f32 == 0.0f);
+    CHECK(outs[0].value.elements[2].scalar.f32 == 0.0f);
+    CHECK(outs[0].value.elements[3].scalar.f32 == 0.0f);
+}
+
+TEST_CASE("interpreter: image sampling — 1x1 red BMP returns red pixel") {
+    auto mod = load_module_from_file(spv("image_sample_frag"));
+    REQUIRE(mod);
+
+    auto sess = create_session(*mod, "main");
+    REQUIRE(sess);
+
+    // Write a 1×1 red BMP and bind it to set=0, binding=0.
+    std::string img_path = write_test_bmp_1x1("red.bmp", 255, 0, 0);
+    REQUIRE(!img_path.empty());
+    REQUIRE(set_image(**sess, 0, 0, img_path));
+
+    // UV = (0.5, 0.5) — for a 1×1 image, any UV resolves to the single texel.
+    Value uv = Value::make_composite({Value::make_f32(0.5f), Value::make_f32(0.5f)});
+    REQUIRE(set_input_location(**sess, 0, uv));
+
+    auto reason = run(**sess);
+    if (reason == StopReason::Panic)
+        FAIL("Panic: " + panic_message(**sess));
+    REQUIRE(reason == StopReason::EntryFinished);
+
+    // Output should be approximately (1.0, 0.0, 0.0, 1.0).
+    auto outs = output_variables(**sess);
+    REQUIRE(outs.size() == 1);
+    REQUIRE(outs[0].value.kind == Value::Kind::Composite);
+    REQUIRE(outs[0].value.elements.size() == 4);
+    CHECK(outs[0].value.elements[0].scalar.f32 == Catch::Approx(1.0f).margin(0.01f));
+    CHECK(outs[0].value.elements[1].scalar.f32 == Catch::Approx(0.0f).margin(0.01f));
+    CHECK(outs[0].value.elements[2].scalar.f32 == Catch::Approx(0.0f).margin(0.01f));
+    CHECK(outs[0].value.elements[3].scalar.f32 == Catch::Approx(1.0f).margin(0.01f));
 }
 
 TEST_CASE("interpreter: fragment derivative — OpDPdx returns zero (single invocation)") {

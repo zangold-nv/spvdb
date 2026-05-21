@@ -17,6 +17,11 @@ add_library(nlohmann_json INTERFACE)
 target_include_directories(nlohmann_json INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json/include)
 
+# stb (single-file headers; image loading via stb_image.h)
+add_library(stb INTERFACE)
+target_include_directories(stb INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb)
+
 # Catch2 (for tests)
 option(CATCH_INSTALL_DOCS "" OFF)
 option(CATCH_INSTALL_EXTRAS "" OFF)
@@ -34,6 +39,7 @@ add_library(spvdb STATIC
     lib/module/module.cpp
     lib/interpreter/interpreter.cpp
     lib/interpreter/glsl_std_450.cpp
+    lib/interpreter/image_sampler.cpp
     lib/api/spvdb.cpp
 )
 
@@ -44,6 +50,7 @@ target_include_directories(spvdb PUBLIC
 target_link_libraries(spvdb PUBLIC
     spirv-headers
     nlohmann_json
+    stb
 )
 
 target_compile_options(spvdb PRIVATE

@@ -458,13 +458,33 @@ static void cmd_set_input(const std::vector<std::string>& args) {
     // Concatenate remaining args (in case JSON has spaces).
     for (size_t i = 5; i < args.size(); ++i) data += " " + args[i];
 
-    // Detect inline JSON vs filename.
+    // Detect inline JSON vs image file vs JSON file.
+    auto has_image_ext = [](const std::string& p) {
+        static const char* exts[] = {
+            ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".hdr", ".exr", nullptr
+        };
+        // Case-insensitive suffix match.
+        for (int i = 0; exts[i]; ++i) {
+            std::string ext = exts[i];
+            if (p.size() >= ext.size()) {
+                std::string suf = p.substr(p.size() - ext.size());
+                for (auto& c : suf) c = static_cast<char>(std::tolower(c));
+                if (suf == ext) return true;
+            }
+        }
+        return false;
+    };
+
     if (!data.empty() && (data[0] == '[' || data[0] == '{')) {
         auto r = set_descriptor_json(*g_session, s_idx, b_idx, data);
         if (!r) std::cerr << "Error: " << r.error().message << "\n";
         else    std::cout << "Set descriptor " << s_idx << ":" << b_idx << "\n";
+    } else if (has_image_ext(data)) {
+        auto r = set_image(*g_session, s_idx, b_idx, data);
+        if (!r) std::cerr << "Error: " << r.error().message << "\n";
+        else    std::cout << "Set image " << s_idx << ":" << b_idx << " from " << data << "\n";
     } else {
-        // Treat as filename — load and pass.
+        // Treat as JSON filename — load and pass.
         std::ifstream f(data);
         if (!f) { std::cerr << "Cannot open file: " << data << "\n"; return; }
         std::string json((std::istreambuf_iterator<char>(f)), {});

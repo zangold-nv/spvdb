@@ -301,6 +301,11 @@ Result<void> set_descriptor_json(Session& s, uint32_t set, uint32_t binding,
                               " binding=" + std::to_string(binding));
 }
 
+Result<void> set_image(Session& s, uint32_t set, uint32_t binding,
+                       std::string_view image_path) {
+    return s.interp.set_image(set, binding, image_path);
+}
+
 Result<void> set_input_location(Session& s, uint32_t location, Value value) {
     return s.interp.set_input_location(location, std::move(value));
 }
