@@ -2,6 +2,8 @@
 // Instruction numbers from the GLSL.std.450 spec (Table 1).
 #include "../core/value.h"
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -91,6 +93,46 @@ enum GlslStd450 : uint32_t {
     NMax              = 80,
     NClamp            = 81,
 };
+
+// ---- float16 helpers -------------------------------------------------------
+
+static uint16_t f32_to_f16(float f) {
+    uint32_t bits;
+    std::memcpy(&bits, &f, 4);
+    uint32_t sign     = (bits >> 31) & 0x1u;
+    int32_t  exp      = static_cast<int32_t>((bits >> 23) & 0xFFu) - 127 + 15;
+    uint32_t mantissa = bits & 0x7FFFFFu;
+    if (exp <= 0) {
+        if (exp < -10) return static_cast<uint16_t>(sign << 15);
+        mantissa = (mantissa | 0x800000u) >> (1 - exp);
+        return static_cast<uint16_t>((sign << 15) | (mantissa >> 13));
+    }
+    if (exp >= 31) return static_cast<uint16_t>((sign << 15) | (31u << 10)); // inf
+    return static_cast<uint16_t>((sign << 15) | (static_cast<uint32_t>(exp) << 10) | (mantissa >> 13));
+}
+
+static float f16_to_f32(uint16_t h) {
+    uint32_t sign     = static_cast<uint32_t>((h >> 15) & 0x1u);
+    uint32_t exp      = static_cast<uint32_t>((h >> 10) & 0x1Fu);
+    uint32_t mantissa = static_cast<uint32_t>(h & 0x3FFu);
+    uint32_t bits;
+    if (exp == 0) {
+        if (mantissa == 0) { bits = sign << 31; }
+        else {
+            exp = 1;
+            while (!(mantissa & 0x400u)) { mantissa <<= 1; exp--; }
+            mantissa &= 0x3FFu;
+            bits = (sign << 31) | ((exp + 127u - 15u) << 23) | (mantissa << 13);
+        }
+    } else if (exp == 31u) {
+        bits = (sign << 31) | (0xFFu << 23) | (mantissa << 13);
+    } else {
+        bits = (sign << 31) | ((exp + 127u - 15u) << 23) | (mantissa << 13);
+    }
+    float result;
+    std::memcpy(&result, &bits, 4);
+    return result;
+}
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -660,19 +702,140 @@ Value dispatch_glsl_std_450(uint32_t inst_id, const std::vector<Value>& args,
             return msb(x);
         }
 
-        // --- Determinant / MatrixInverse: stub for now ---
+        // --- FrexpStruct ---
+        // (Non-struct Frexp writes through a pointer; handled in exec_ext_inst.)
+        case FrexpStruct: {
+            const Value& x = get(0);
+            auto do_frexp = [](const Value& v) -> std::pair<Value, Value> {
+                int exp;
+                if (v.kind == Value::Kind::Float32) {
+                    float sig = std::frexpf(v.scalar.f32, &exp);
+                    return {Value::make_f32(sig), Value::make_i32(exp)};
+                }
+                double sig = std::frexp(v.scalar.f64, &exp);
+                return {Value::make_f64(sig), Value::make_i32(exp)};
+            };
+            if (x.kind == Value::Kind::Composite) {
+                std::vector<Value> sigs, exps;
+                for (auto& e : x.elements) {
+                    auto [s, ex] = do_frexp(e);
+                    sigs.push_back(s); exps.push_back(ex);
+                }
+                return Value::make_composite({Value::make_composite(std::move(sigs)),
+                                             Value::make_composite(std::move(exps))});
+            }
+            auto [sig, exp] = do_frexp(x);
+            return Value::make_composite({sig, exp});
+        }
+
+        // --- Pack ---
+        case PackSnorm4x8: {
+            const Value& v = get(0);
+            uint32_t result = 0;
+            for (int i = 0; i < 4; ++i) {
+                float clamped = std::fmaxf(-1.f, std::fminf(1.f, v.elements[i].scalar.f32));
+                auto byte = static_cast<uint8_t>(static_cast<int8_t>(std::roundf(clamped * 127.f)));
+                result |= static_cast<uint32_t>(byte) << (i * 8);
+            }
+            return Value::make_u32(result);
+        }
+        case PackUnorm4x8: {
+            const Value& v = get(0);
+            uint32_t result = 0;
+            for (int i = 0; i < 4; ++i) {
+                float clamped = std::fmaxf(0.f, std::fminf(1.f, v.elements[i].scalar.f32));
+                result |= static_cast<uint32_t>(static_cast<uint8_t>(std::roundf(clamped * 255.f))) << (i * 8);
+            }
+            return Value::make_u32(result);
+        }
+        case PackSnorm2x16: {
+            const Value& v = get(0);
+            auto pack = [](float f) -> uint16_t {
+                float c = std::fmaxf(-1.f, std::fminf(1.f, f));
+                return static_cast<uint16_t>(static_cast<int16_t>(std::roundf(c * 32767.f)));
+            };
+            uint32_t lo = pack(v.elements[0].scalar.f32);
+            uint32_t hi = pack(v.elements[1].scalar.f32);
+            return Value::make_u32(lo | (hi << 16));
+        }
+        case PackUnorm2x16: {
+            const Value& v = get(0);
+            auto pack = [](float f) -> uint32_t {
+                float c = std::fmaxf(0.f, std::fminf(1.f, f));
+                return static_cast<uint32_t>(static_cast<uint16_t>(std::roundf(c * 65535.f)));
+            };
+            return Value::make_u32(pack(v.elements[0].scalar.f32) |
+                                   (pack(v.elements[1].scalar.f32) << 16));
+        }
+        case PackHalf2x16: {
+            const Value& v = get(0);
+            uint32_t lo = f32_to_f16(v.elements[0].scalar.f32);
+            uint32_t hi = f32_to_f16(v.elements[1].scalar.f32);
+            return Value::make_u32(lo | (hi << 16));
+        }
+        case PackDouble2x32: {
+            const Value& v = get(0);
+            uint64_t bits = static_cast<uint64_t>(v.elements[0].scalar.u32) |
+                            (static_cast<uint64_t>(v.elements[1].scalar.u32) << 32);
+            double d;
+            std::memcpy(&d, &bits, 8);
+            return Value::make_f64(d);
+        }
+
+        // --- Unpack ---
+        case UnpackSnorm2x16: {
+            uint32_t p = get(0).scalar.u32;
+            auto unpack = [](uint16_t bits) -> float {
+                int16_t s; std::memcpy(&s, &bits, 2);
+                return std::fmaxf(-1.f, static_cast<float>(s) / 32767.f);
+            };
+            return Value::make_composite({Value::make_f32(unpack(p & 0xFFFFu)),
+                                         Value::make_f32(unpack(p >> 16))});
+        }
+        case UnpackUnorm2x16: {
+            uint32_t p = get(0).scalar.u32;
+            return Value::make_composite({
+                Value::make_f32(static_cast<float>(p & 0xFFFFu) / 65535.f),
+                Value::make_f32(static_cast<float>(p >> 16) / 65535.f)});
+        }
+        case UnpackHalf2x16: {
+            uint32_t p = get(0).scalar.u32;
+            return Value::make_composite({Value::make_f32(f16_to_f32(p & 0xFFFFu)),
+                                         Value::make_f32(f16_to_f32(p >> 16))});
+        }
+        case UnpackSnorm4x8: {
+            uint32_t p = get(0).scalar.u32;
+            auto unpack = [](uint8_t bits) -> float {
+                int8_t s = static_cast<int8_t>(bits);
+                return std::fmaxf(-1.f, static_cast<float>(s) / 127.f);
+            };
+            return Value::make_composite({
+                Value::make_f32(unpack(p & 0xFFu)),
+                Value::make_f32(unpack((p >> 8) & 0xFFu)),
+                Value::make_f32(unpack((p >> 16) & 0xFFu)),
+                Value::make_f32(unpack(p >> 24))});
+        }
+        case UnpackUnorm4x8: {
+            uint32_t p = get(0).scalar.u32;
+            return Value::make_composite({
+                Value::make_f32(static_cast<float>(p & 0xFFu) / 255.f),
+                Value::make_f32(static_cast<float>((p >> 8) & 0xFFu) / 255.f),
+                Value::make_f32(static_cast<float>((p >> 16) & 0xFFu) / 255.f),
+                Value::make_f32(static_cast<float>(p >> 24) / 255.f)});
+        }
+        case UnpackDouble2x32: {
+            uint64_t bits;
+            std::memcpy(&bits, &get(0).scalar.f64, 8);
+            return Value::make_composite({
+                Value::make_u32(static_cast<uint32_t>(bits & 0xFFFFFFFFu)),
+                Value::make_u32(static_cast<uint32_t>(bits >> 32))});
+        }
+
+        // --- Determinant / MatrixInverse: stub ---
         case Determinant:
         case MatrixInverse:
             diagnostics.push_back("GLSL.std.450: Determinant/MatrixInverse not yet implemented, returning 0");
             return Value::make_f32(0.f);
-
-        // --- Pack/Unpack: stub ---
-        case PackSnorm4x8: case PackUnorm4x8: case PackSnorm2x16: case PackUnorm2x16:
-        case PackHalf2x16: case PackDouble2x32:
-        case UnpackSnorm2x16: case UnpackUnorm2x16: case UnpackHalf2x16:
-        case UnpackSnorm4x8: case UnpackUnorm4x8: case UnpackDouble2x32:
-            diagnostics.push_back("GLSL.std.450: Pack/Unpack " + std::to_string(inst_id) + " not yet implemented");
-            return Value::make_u32(0);
 
         // --- Interpolate: stub ---
         case InterpolateAtCentroid: case InterpolateAtSample: case InterpolateAtOffset:

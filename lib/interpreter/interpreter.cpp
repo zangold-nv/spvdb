@@ -1163,6 +1163,42 @@ StopReason Interpreter::exec_ext_inst(const Instruction& inst) {
     }
 
     if (eit->second == "GLSL.std.450") {
+        // Frexp (51) writes the exponent through a pointer operand; handle before
+        // the general dispatch which cannot perform pointer stores.
+        if (ext_inst == 51 /* Frexp */ && inst.operand_count() >= 4) {
+            Value x       = lookup(inst.operand(2));
+            Value exp_ptr = lookup(inst.operand(3));
+            auto do_frexp = [](const Value& v, Value& exp_out) -> Value {
+                int e;
+                if (v.kind == Value::Kind::Float32) {
+                    float sig = std::frexpf(v.scalar.f32, &e);
+                    exp_out = Value::make_i32(e);
+                    return Value::make_f32(sig);
+                }
+                double sig = std::frexp(v.scalar.f64, &e);
+                exp_out = Value::make_i32(e);
+                return Value::make_f64(sig);
+            };
+            Value sig, exp_val;
+            if (x.kind == Value::Kind::Composite) {
+                std::vector<Value> sigs, exps;
+                for (auto& e : x.elements) {
+                    Value ev;
+                    sigs.push_back(do_frexp(e, ev));
+                    exps.push_back(std::move(ev));
+                }
+                sig     = Value::make_composite(std::move(sigs));
+                exp_val = Value::make_composite(std::move(exps));
+            } else {
+                sig = do_frexp(x, exp_val);
+            }
+            auto sr = store_ptr(exp_ptr, std::move(exp_val));
+            if (!sr) diagnostics.push_back("Frexp: " + sr.error().message);
+            if (inst.result_id) id_map_[inst.result_id] = std::move(sig);
+            advance_pc();
+            return StopReason::Step;
+        }
+
         std::vector<Value> args;
         for (uint32_t i = 2; i < inst.operand_count(); ++i)
             args.push_back(lookup(inst.operand(i)));
