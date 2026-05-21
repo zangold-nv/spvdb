@@ -193,6 +193,33 @@ struct ModuleBuilder {
                 break;
             }
 
+            // --- String literals (used by debug info) ---
+            case SpvOpString:
+                // words: [result_id, string...]
+                m->strings[inst.result_id] = extract_string(inst.words, 1);
+                break;
+
+            // --- Global NonSemantic debug info (DebugSource etc.) ---
+            case SpvOpExtInst: {
+                // words: [type_id, result_id, ext_set_id, inst_id, operands...]
+                if (inst.words.size() >= 5) {
+                    uint32_t ext_set = inst.words[2];
+                    uint32_t debug_op = inst.words[3];
+                    auto eit = m->ext_imports.find(ext_set);
+                    if (eit != m->ext_imports.end() &&
+                        eit->second == "NonSemantic.Shader.DebugInfo.100") {
+                        if (debug_op == 35 /* DebugSource */) {
+                            // operand[0] = file OpString result-id
+                            uint32_t str_id = inst.words[4];
+                            auto sit = m->strings.find(str_id);
+                            if (sit != m->strings.end())
+                                m->debug_sources[inst.result_id] = sit->second;
+                        }
+                    }
+                }
+                break;
+            }
+
             // --- Names ---
             case SpvOpName:
                 // words: [target_id, name...]
@@ -517,6 +544,75 @@ static void build_functions(SpvModule& m, const ParsedModule& parsed) {
     }
 }
 
+// ---- debug annotation third pass -------------------------------------------
+
+static void build_debug_annotations(SpvModule& m) {
+    // Find the NonSemantic.Shader.DebugInfo.100 extension set id (if any).
+    uint32_t nonsemantic_id = 0;
+    for (auto& [id, name] : m.ext_imports) {
+        if (name == "NonSemantic.Shader.DebugInfo.100") {
+            nonsemantic_id = id;
+            break;
+        }
+    }
+
+    for (auto fn_id : m.function_order) {
+        auto& fn = m.functions[fn_id];
+        for (auto& bb : fn.blocks) {
+            bb.source_locs.reserve(bb.instructions.size());
+            SourceLoc current_loc;
+
+            for (auto& inst : bb.instructions) {
+                // OpLine: words = [file_string_id, line, column]
+                if (inst.opcode == SpvOpLine && inst.words.size() >= 3) {
+                    uint32_t str_id = inst.words[0];
+                    uint32_t line   = inst.words[1];
+                    uint32_t col    = inst.words[2];
+                    auto sit = m.strings.find(str_id);
+                    if (sit != m.strings.end()) {
+                        current_loc.file   = sit->second;
+                        current_loc.line   = line;
+                        current_loc.column = col;
+                    }
+                } else if (inst.opcode == SpvOpNoLine) {
+                    current_loc = {};
+                } else if (inst.opcode == SpvOpExtInst &&
+                           nonsemantic_id != 0 &&
+                           inst.words.size() >= 4 &&
+                           inst.words[2] == nonsemantic_id) {
+                    uint32_t debug_op = inst.words[3];
+                    if (debug_op == 103 /* DebugLine */ && inst.words.size() >= 9) {
+                        // words: [type, result, set, 103, source_id,
+                        //         line_start, line_end, col_start, col_end]
+                        uint32_t source_id  = inst.words[4];
+                        uint32_t line_cid   = inst.words[5];
+                        uint32_t col_cid    = inst.words[7];
+                        auto lit = m.constants.find(line_cid);
+                        auto cit = m.constants.find(col_cid);
+                        auto get_u32 = [](const Value& v) -> uint32_t {
+                            if (v.kind == Value::Kind::UInt32) return v.scalar.u32;
+                            if (v.kind == Value::Kind::Int32)
+                                return static_cast<uint32_t>(v.scalar.i32);
+                            return 0;
+                        };
+                        uint32_t line_val = (lit != m.constants.end()) ? get_u32(lit->second) : 0;
+                        uint32_t col_val  = (cit != m.constants.end()) ? get_u32(cit->second) : 0;
+                        auto dsit = m.debug_sources.find(source_id);
+                        if (dsit != m.debug_sources.end() && line_val != 0) {
+                            current_loc.file   = dsit->second;
+                            current_loc.line   = line_val;
+                            current_loc.column = col_val;
+                        }
+                    } else if (debug_op == 104 /* DebugNoLine */) {
+                        current_loc = {};
+                    }
+                }
+                bb.source_locs.push_back(current_loc);
+            }
+        }
+    }
+}
+
 // ---- entry point -----------------------------------------------------------
 
 Result<std::shared_ptr<SpvModule>> build_module(const ParsedModule& parsed) {
@@ -536,6 +632,9 @@ Result<std::shared_ptr<SpvModule>> build_module(const ParsedModule& parsed) {
 
     // Second pass: build functions + basic blocks.
     build_functions(*builder.m, parsed);
+
+    // Third pass: annotate each instruction with its source location.
+    build_debug_annotations(*builder.m);
 
     return builder.m;
 }

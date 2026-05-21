@@ -58,11 +58,19 @@ public:
     // Select entry point and initialize memory. Must be called before step/run.
     Result<void> begin(const std::string& entry_name);
 
-    // Execute one SPIR-V instruction.
+    // Execute one SPIR-V instruction.  May return Breakpoint if the new PC
+    // matches an active breakpoint (result-id or source location).
     StopReason step_instruction();
 
     // Execute until a breakpoint, EntryFinished, or Panic.
     StopReason run_to_breakpoint();
+
+    // Execute until the source line changes (step into).
+    StopReason step_source_line();
+
+    // Execute until the source line changes at the current or shallower call
+    // depth (step over).
+    StopReason step_over_source_line();
 
     // Execute until the current function returns.
     StopReason step_out();
@@ -81,6 +89,10 @@ public:
     bool      is_finished() const { return finished_; }
     bool      is_panicked() const { return panicked_; }
     const std::string& panic_message() const { return panic_msg_; }
+
+    // Source location of the instruction at the current PC.
+    // Returns an invalid SourceLoc (line==0) when no debug info is available.
+    SourceLoc current_source_location() const;
 
     // All variables currently live in the id_map.
     std::vector<std::pair<std::string, Value>> local_variables() const;
@@ -148,6 +160,9 @@ private:
 
     // ---- helpers -----------------------------------------------------------
     void        panic(const std::string& msg);
+
+    // Returns true if the current PC matches any active breakpoint.
+    bool check_breakpoint_at_pc() const;
 
     // Get or produce the Value for a result-id (checks id_map_ then constants).
     const Value& lookup(uint32_t id) const;

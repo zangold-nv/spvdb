@@ -439,15 +439,18 @@ StopReason Interpreter::step_instruction() {
     }
 
     const Instruction& inst = bb.instructions[pc_.instr_index];
-    return execute_one(inst);
+    auto r = execute_one(inst);
+    if (r == StopReason::Panic || r == StopReason::EntryFinished) return r;
+    // Check breakpoints at the NEW PC (the instruction we've arrived at but
+    // not yet executed).
+    if (check_breakpoint_at_pc()) return StopReason::Breakpoint;
+    return r;
 }
 
 StopReason Interpreter::run_to_breakpoint() {
     while (!finished_ && !panicked_) {
         auto r = step_instruction();
-        if (r == StopReason::Breakpoint || r == StopReason::Panic ||
-            r == StopReason::EntryFinished)
-            return r;
+        if (r != StopReason::Step) return r;
     }
     return panicked_ ? StopReason::Panic : StopReason::EntryFinished;
 }
@@ -1204,6 +1207,9 @@ StopReason Interpreter::exec_ext_inst(const Instruction& inst) {
             args.push_back(lookup(inst.operand(i)));
         Value result = dispatch_glsl_std_450(ext_inst, args, diagnostics);
         if (inst.result_id) id_map_[inst.result_id] = std::move(result);
+    } else if (eit->second.rfind("NonSemantic.", 0) == 0) {
+        // NonSemantic extensions carry only debug/reflection metadata; no-op silently.
+        if (inst.result_id) id_map_[inst.result_id] = Value::make_u32(0);
     } else {
         diagnostics.push_back("OpExtInst: unsupported extension set " + eit->second);
         if (inst.result_id) id_map_[inst.result_id] = Value::make_u32(0);
@@ -1328,6 +1334,85 @@ Result<Value> Interpreter::read_descriptor(uint32_t set, uint32_t binding) const
     }
     return Result<Value>::err("No descriptor at set=" + std::to_string(set) +
                               " binding=" + std::to_string(binding));
+}
+
+// ---- debug info helpers ----------------------------------------------------
+
+SourceLoc Interpreter::current_source_location() const {
+    if (finished_ || panicked_ || !pc_.valid()) return {};
+    auto fit = module_->functions.find(pc_.function_id);
+    if (fit == module_->functions.end()) return {};
+    const Function& fn = fit->second;
+    auto bit = fn.block_index.find(pc_.block_label);
+    if (bit == fn.block_index.end()) return {};
+    const BasicBlock& bb = fn.blocks[bit->second];
+    if (pc_.instr_index < bb.source_locs.size())
+        return bb.source_locs[pc_.instr_index];
+    return {};
+}
+
+bool Interpreter::check_breakpoint_at_pc() const {
+    if (breakpoints_.empty() || finished_ || panicked_) return false;
+    auto fit = module_->functions.find(pc_.function_id);
+    if (fit == module_->functions.end()) return false;
+    const Function& fn = fit->second;
+    auto bit = fn.block_index.find(pc_.block_label);
+    if (bit == fn.block_index.end()) return false;
+    const BasicBlock& bb = fn.blocks[bit->second];
+    if (pc_.instr_index >= bb.instructions.size()) return false;
+
+    const Instruction& inst = bb.instructions[pc_.instr_index];
+    SourceLoc loc = (pc_.instr_index < bb.source_locs.size())
+                    ? bb.source_locs[pc_.instr_index] : SourceLoc{};
+
+    for (const auto& bp : breakpoints_) {
+        if (!bp.active) continue;
+        // Result-id breakpoint.
+        if (bp.result_id != 0 && inst.result_id == bp.result_id)
+            return true;
+        // Source breakpoint: match file suffix + line.
+        if (!bp.file.empty() && bp.line != 0 && loc.line == bp.line) {
+            // Accept if the recorded file ends with the requested file path
+            // (allows matching "foo.hlsl" against "/full/path/to/foo.hlsl").
+            if (loc.file == bp.file ||
+                (loc.file.size() >= bp.file.size() &&
+                 loc.file.compare(loc.file.size() - bp.file.size(),
+                                  bp.file.size(), bp.file) == 0))
+                return true;
+        }
+    }
+    return false;
+}
+
+StopReason Interpreter::step_source_line() {
+    SourceLoc start_loc = current_source_location();
+    while (!finished_ && !panicked_) {
+        auto r = step_instruction();
+        if (r != StopReason::Step) return r;
+        SourceLoc new_loc = current_source_location();
+        // If we didn't have a starting location, any instruction advance suffices.
+        if (!start_loc.valid()) return StopReason::Step;
+        // Stop when we've moved to a different source line.
+        if (new_loc.line != start_loc.line || new_loc.file != start_loc.file)
+            return StopReason::Step;
+    }
+    return panicked_ ? StopReason::Panic : StopReason::EntryFinished;
+}
+
+StopReason Interpreter::step_over_source_line() {
+    SourceLoc start_loc = current_source_location();
+    size_t start_depth = call_stack_.size();
+    while (!finished_ && !panicked_) {
+        auto r = step_instruction();
+        if (r != StopReason::Step) return r;
+        // Don't evaluate the source location if we've descended into a callee.
+        if (call_stack_.size() > start_depth) continue;
+        SourceLoc new_loc = current_source_location();
+        if (!start_loc.valid()) return StopReason::Step;
+        if (new_loc.line != start_loc.line || new_loc.file != start_loc.file)
+            return StopReason::Step;
+    }
+    return panicked_ ? StopReason::Panic : StopReason::EntryFinished;
 }
 
 uint32_t Interpreter::add_breakpoint(std::string file, uint32_t line) {

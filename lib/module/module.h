@@ -11,6 +11,15 @@
 
 namespace spvdb {
 
+// A resolved source file/line/column, produced from OpLine or NonSemantic
+// debug info.  An empty file or line==0 means "no location known."
+struct SourceLoc {
+    std::string file;
+    uint32_t    line   = 0;
+    uint32_t    column = 0;
+    bool valid() const { return !file.empty() && line != 0; }
+};
+
 // A SPIR-V decoration and its literal operands.
 struct Decoration {
     SpvDecoration kind;
@@ -46,6 +55,9 @@ struct Variable {
 struct BasicBlock {
     uint32_t              label_id = 0;
     std::vector<Instruction> instructions;  // includes the terminator
+    // Parallel to instructions: resolved source location for each instruction.
+    // Populated by build_module() from OpLine / NonSemantic DebugLine.
+    std::vector<SourceLoc> source_locs;
 };
 
 // A SPIR-V function.
@@ -140,6 +152,13 @@ struct SpvModule {
     // Extension import table: result-id → extension name string.
     // e.g. id 1 → "GLSL.std.450"
     std::unordered_map<uint32_t, std::string> ext_imports;
+
+    // OpString table: result-id → string value.
+    std::unordered_map<uint32_t, std::string> strings;
+
+    // NonSemantic.Shader.DebugInfo.100 DebugSource result-id → filename.
+    // Populated from global DebugSource instructions during build_module().
+    std::unordered_map<uint32_t, std::string> debug_sources;
 
     // Capabilities declared by the module.
     std::vector<SpvCapability> capabilities;

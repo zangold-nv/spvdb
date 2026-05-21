@@ -114,15 +114,101 @@ static void cmd_run() {
     }
 }
 
+static void print_stop_reason(StopReason reason) {
+    switch (reason) {
+        case StopReason::EntryFinished: std::cout << "Program finished normally.\n"; break;
+        case StopReason::Panic:         std::cerr << "Panic: " << panic_message(*g_session) << "\n"; break;
+        case StopReason::Breakpoint: {
+            std::cout << "Breakpoint hit";
+            auto loc = current_location(*g_session);
+            if (loc.line) std::cout << " at " << loc.file << ":" << loc.line;
+            std::cout << "\n";
+            break;
+        }
+        default: {
+            // For step/next: print current location if known.
+            auto loc = current_location(*g_session);
+            if (loc.line) std::cout << loc.file << ":" << loc.line << "\n";
+            break;
+        }
+    }
+}
+
 static void cmd_stepi() {
     if (!g_session) { ensure_session(); if (!g_session) return; }
     auto reason = step_instruction(*g_session);
-    switch (reason) {
-        case StopReason::EntryFinished: std::cout << "Program finished.\n"; break;
-        case StopReason::Panic:         std::cerr << "Panic: " << panic_message(*g_session) << "\n"; break;
-        default: break;
+    print_stop_reason(reason);
+}
+
+static void cmd_step() {
+    if (!g_session) { ensure_session(); if (!g_session) return; }
+    auto reason = step(*g_session);
+    print_stop_reason(reason);
+}
+
+static void cmd_next() {
+    if (!g_session) { ensure_session(); if (!g_session) return; }
+    auto reason = step_over(*g_session);
+    print_stop_reason(reason);
+}
+
+static void cmd_continue() {
+    if (!g_session) { ensure_session(); if (!g_session) return; }
+    auto reason = spvdb::run(*g_session);
+    print_stop_reason(reason);
+}
+
+static void cmd_finish() {
+    if (!g_session) { std::cout << "No active session.\n"; return; }
+    auto reason = step_out(*g_session);
+    print_stop_reason(reason);
+}
+
+static void cmd_break(const std::vector<std::string>& args) {
+    if (!g_module) { std::cout << "No module loaded.\n"; return; }
+    ensure_session();
+    if (!g_session) return;
+    if (args.size() < 2) { std::cout << "Usage: break <file>:<line>  or  break %<result-id>\n"; return; }
+    const std::string& loc = args[1];
+    if (!loc.empty() && loc[0] == '%') {
+        uint32_t rid = static_cast<uint32_t>(std::stoul(loc.substr(1)));
+        auto r = set_breakpoint_at_id(*g_session, rid);
+        if (r) std::cout << "Breakpoint " << r->id << " at %" << rid << "\n";
+        return;
+    }
+    auto colon = loc.rfind(':');
+    if (colon == std::string::npos) { std::cout << "Usage: break <file>:<line>\n"; return; }
+    std::string file = loc.substr(0, colon);
+    uint32_t line = static_cast<uint32_t>(std::stoul(loc.substr(colon + 1)));
+    auto r = set_breakpoint(*g_session, file, line);
+    if (r) std::cout << "Breakpoint " << r->id << " at " << file << ":" << line << "\n";
+}
+
+static void cmd_delete(const std::vector<std::string>& args) {
+    if (!g_session) { std::cout << "No active session.\n"; return; }
+    if (args.size() < 2) { std::cout << "Usage: delete <bp-id>\n"; return; }
+    uint32_t id = static_cast<uint32_t>(std::stoul(args[1]));
+    remove_breakpoint(*g_session, BreakpointId{id});
+    std::cout << "Deleted breakpoint " << id << "\n";
+}
+
+static void cmd_info_breakpoints() {
+    std::cout << "(breakpoint list not yet queryable via public API)\n";
+}
+
+static void cmd_backtrace() {
+    if (!g_session) { std::cout << "No active session.\n"; return; }
+    auto frames = backtrace(*g_session);
+    if (frames.empty()) { std::cout << "(no stack frames)\n"; return; }
+    for (size_t i = 0; i < frames.size(); ++i) {
+        std::cout << "#" << i << "  " << frames[i].function_name;
+        if (frames[i].loc.line)
+            std::cout << " at " << frames[i].loc.file << ":" << frames[i].loc.line;
+        std::cout << "\n";
     }
 }
+
+static void cmd_where() { cmd_backtrace(); }
 
 static void cmd_info_outputs() {
     if (!g_session) { std::cout << "No active session.\n"; return; }
@@ -230,20 +316,28 @@ static bool dispatch(const std::string& line) {
     if (cmd == "quit" || cmd == "q" || cmd == "exit") return false;
 
     if (cmd == "file") { cmd_file(tokens); return true; }
-    if (cmd == "info") {
-        if (tokens.size() > 1 && tokens[1] == "entries") { cmd_info_entries(); return true; }
-        if (tokens.size() > 1 && tokens[1] == "outputs") { cmd_info_outputs(); return true; }
-        if (tokens.size() > 1 && tokens[1] == "locals")  { cmd_info_locals();  return true; }
-        std::cout << "info subcommands: entries, outputs, locals\n"; return true;
-    }
     if (cmd == "entry")   { cmd_entry(tokens);    return true; }
-    if (cmd == "run")     { cmd_run();             return true; }
-    if (cmd == "stepi" || cmd == "si") { cmd_stepi();         return true; }
-    if (cmd == "print" || cmd == "p") { cmd_print(tokens);    return true; }
+    if (cmd == "run" || cmd == "r")      { cmd_run();            return true; }
+    if (cmd == "continue" || cmd == "c") { cmd_continue();        return true; }
+    if (cmd == "step"  || cmd == "s")    { cmd_step();            return true; }
+    if (cmd == "next"  || cmd == "n")    { cmd_next();            return true; }
+    if (cmd == "finish")                 { cmd_finish();          return true; }
+    if (cmd == "stepi" || cmd == "si")   { cmd_stepi();           return true; }
+    if (cmd == "break" || cmd == "b")    { cmd_break(tokens);     return true; }
+    if (cmd == "delete" || cmd == "d")   { cmd_delete(tokens);    return true; }
+    if (cmd == "backtrace" || cmd == "bt" || cmd == "where") { cmd_backtrace(); return true; }
+    if (cmd == "print" || cmd == "p")    { cmd_print(tokens);     return true; }
+    if (cmd == "info") {
+        if (tokens.size() > 1 && tokens[1] == "entries")     { cmd_info_entries();     return true; }
+        if (tokens.size() > 1 && tokens[1] == "outputs")     { cmd_info_outputs();     return true; }
+        if (tokens.size() > 1 && tokens[1] == "locals")      { cmd_info_locals();      return true; }
+        if (tokens.size() > 1 && tokens[1] == "breakpoints") { cmd_info_breakpoints(); return true; }
+        std::cout << "info subcommands: entries, outputs, locals, breakpoints\n"; return true;
+    }
     if (cmd == "set") {
-        if (tokens.size() > 1 && tokens[1] == "input")    { cmd_set_input(tokens);    return true; }
-        if (tokens.size() > 1 && tokens[1] == "builtin")  { cmd_set_builtin(tokens);  return true; }
-        if (tokens.size() > 1 && tokens[1] == "specconst"){ cmd_set_specconst(tokens); return true; }
+        if (tokens.size() > 1 && tokens[1] == "input")     { cmd_set_input(tokens);     return true; }
+        if (tokens.size() > 1 && tokens[1] == "builtin")   { cmd_set_builtin(tokens);   return true; }
+        if (tokens.size() > 1 && tokens[1] == "specconst") { cmd_set_specconst(tokens); return true; }
         std::cout << "set subcommands: input, builtin, specconst\n"; return true;
     }
     if (cmd == "help" || cmd == "h" || cmd == "?") {
@@ -252,8 +346,17 @@ static bool dispatch(const std::string& line) {
             "  file <path.spv>          Load SPIR-V module\n"
             "  info entries             List entry points\n"
             "  entry <name>             Select entry point\n"
-            "  run                      Execute from start\n"
+            "  run / r                  Execute from the start\n"
+            "  continue / c             Continue execution to next breakpoint\n"
+            "  step / s                 Step one source line (into calls)\n"
+            "  next / n                 Step one source line (over calls)\n"
+            "  finish                   Run until current function returns\n"
             "  stepi / si               Step one SPIR-V instruction\n"
+            "  break <file>:<line>      Set a source breakpoint\n"
+            "  break %<id>              Set a result-id breakpoint\n"
+            "  delete <bp-id>           Remove a breakpoint\n"
+            "  info breakpoints         List breakpoints\n"
+            "  backtrace / bt           Print call stack\n"
             "  info locals              Print local variables\n"
             "  info outputs             Print output variables\n"
             "  print <var> / p <var>    Print a variable\n"

@@ -224,7 +224,7 @@ TEST_CASE("interpreter: step_instruction advances through copy_uint") {
     CHECK(out[0] == 99u);
 }
 
-TEST_CASE("interpreter: breakpoint on result id stops execution") {
+TEST_CASE("interpreter: breakpoint on result id — no match, run to completion") {
     auto mod = load_module_from_file(spv("add_uint"));
     REQUIRE(mod);
 
@@ -235,12 +235,45 @@ TEST_CASE("interpreter: breakpoint on result id stops execution") {
     REQUIRE(set_descriptor_json(**sess, 0, 1, json_u32({0})));
 
     // id 0 won't match any real result id — run should finish normally.
-    auto bp = set_breakpoint_at_id(**sess, 0);
+    set_breakpoint_at_id(**sess, 0);
     auto reason = run(**sess);
     if (reason == StopReason::Panic)
         FAIL("Panic: " + panic_message(**sess));
     CHECK(reason == StopReason::EntryFinished);
 
     auto out = read_u32s(**sess, 0, 1, 1);
+    CHECK(out[0] == 7u);
+}
+
+TEST_CASE("interpreter: breakpoint on result id fires before instruction executes") {
+    // In add_uint.spv: %22 = OpIAdd %uint %19 %21  (the addition result)
+    // %23 = OpAccessChain ... (out ptr), then OpStore %23 %22.
+    // A breakpoint on %22 should stop BEFORE the add, so the output buffer
+    // still holds its initial value (0).
+    auto mod = load_module_from_file(spv("add_uint"));
+    REQUIRE(mod);
+
+    auto sess = create_session(*mod, "main");
+    REQUIRE(sess);
+
+    REQUIRE(set_descriptor_json(**sess, 0, 0, json_u32({3, 4})));
+    REQUIRE(set_descriptor_json(**sess, 0, 1, json_u32({0})));
+
+    set_breakpoint_at_id(**sess, 22);  // %22 = OpIAdd
+    auto reason = run(**sess);
+    if (reason == StopReason::Panic)
+        FAIL("Panic: " + panic_message(**sess));
+    CHECK(reason == StopReason::Breakpoint);
+
+    // Output not yet written — the store comes after the add.
+    auto out = read_u32s(**sess, 0, 1, 1);
+    CHECK(out[0] == 0u);
+
+    // Continuing should finish and produce the result.
+    reason = run(**sess);
+    if (reason == StopReason::Panic)
+        FAIL("Panic after continue: " + panic_message(**sess));
+    CHECK(reason == StopReason::EntryFinished);
+    out = read_u32s(**sess, 0, 1, 1);
     CHECK(out[0] == 7u);
 }

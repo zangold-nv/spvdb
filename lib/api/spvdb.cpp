@@ -348,11 +348,10 @@ StopReason step_instruction(Session& s) {
     return ensure_and_run(s, [&]{ return s.interp.step_instruction(); });
 }
 StopReason step_over(Session& s) {
-    // Stub: step_instruction for now; Phase 2 adds source-level step-over.
-    return step_instruction(s);
+    return ensure_and_run(s, [&]{ return s.interp.step_over_source_line(); });
 }
 StopReason step(Session& s) {
-    return step_instruction(s);
+    return ensure_and_run(s, [&]{ return s.interp.step_source_line(); });
 }
 StopReason step_out(Session& s) {
     return ensure_and_run(s, [&]{ return s.interp.step_out(); });
@@ -362,9 +361,9 @@ std::string panic_message(const Session& s) { return s.interp.panic_message(); }
 
 // ---- Inspection ------------------------------------------------------------
 
-SourceLocation current_location(const Session&) {
-    // Phase 2 will implement this via NonSemantic.Shader.DebugInfo.100.
-    return {};
+SourceLocation current_location(const Session& s) {
+    auto loc = s.interp.current_source_location();
+    return { loc.file, loc.line, loc.column };
 }
 
 std::vector<LocalVar> local_variables(const Session& s) {
@@ -427,14 +426,44 @@ Result<std::vector<std::byte>> read_descriptor(const Session& s,
     return bytes;
 }
 
+static SourceLocation loc_from_pc(const ::spvdb::SpvModule& m, const PC& pc) {
+    auto fit = m.functions.find(pc.function_id);
+    if (fit == m.functions.end()) return {};
+    auto bit = fit->second.block_index.find(pc.block_label);
+    if (bit == fit->second.block_index.end()) return {};
+    const BasicBlock& bb = fit->second.blocks[bit->second];
+    if (pc.instr_index < bb.source_locs.size()) {
+        auto& sl = bb.source_locs[pc.instr_index];
+        return { sl.file, sl.line, sl.column };
+    }
+    return {};
+}
+
 std::vector<Frame> backtrace(const Session& s) {
     std::vector<Frame> result;
-    for (auto& frame : s.interp.call_stack()) {
+
+    // Innermost frame: current execution position.
+    {
         Frame f;
-        auto fit = s.module->functions.find(frame.return_pc.function_id);
+        const PC& pc = s.interp.current_pc();
+        auto fit = s.module->functions.find(pc.function_id);
         if (fit != s.module->functions.end())
             f.function_name = fit->second.name.empty() ?
-                "%" + std::to_string(frame.return_pc.function_id) : fit->second.name;
+                "%" + std::to_string(pc.function_id) : fit->second.name;
+        auto loc = s.interp.current_source_location();
+        f.loc = { loc.file, loc.line, loc.column };
+        result.push_back(std::move(f));
+    }
+
+    // Outer frames: callers, most recent first.
+    auto stack = s.interp.call_stack();
+    for (auto it = stack.rbegin(); it != stack.rend(); ++it) {
+        Frame f;
+        auto fit = s.module->functions.find(it->return_pc.function_id);
+        if (fit != s.module->functions.end())
+            f.function_name = fit->second.name.empty() ?
+                "%" + std::to_string(it->return_pc.function_id) : fit->second.name;
+        f.loc = loc_from_pc(*s.module, it->return_pc);
         result.push_back(std::move(f));
     }
     return result;
