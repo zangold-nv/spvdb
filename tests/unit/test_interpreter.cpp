@@ -245,6 +245,70 @@ TEST_CASE("interpreter: breakpoint on result id — no match, run to completion"
     CHECK(out[0] == 7u);
 }
 
+TEST_CASE("interpreter: fragment passthrough — input location 0 copied to output") {
+    auto mod = load_module_from_file(spv("passthrough_frag"));
+    REQUIRE(mod);
+
+    auto sess = create_session(*mod, "main");
+    REQUIRE(sess);
+
+    // Bind a vec4 (1.0, 0.5, 0.25, 1.0) to input location 0.
+    Value color = Value::make_composite({
+        Value::make_f32(1.0f),
+        Value::make_f32(0.5f),
+        Value::make_f32(0.25f),
+        Value::make_f32(1.0f)
+    });
+    REQUIRE(set_input_location(**sess, 0, color));
+
+    auto reason = run(**sess);
+    if (reason == StopReason::Panic)
+        FAIL("Panic: " + panic_message(**sess));
+    REQUIRE(reason == StopReason::EntryFinished);
+
+    // Output variables should contain the same vec4.
+    auto outs = output_variables(**sess);
+    REQUIRE(outs.size() == 1);
+    REQUIRE(outs[0].value.kind == Value::Kind::Composite);
+    REQUIRE(outs[0].value.elements.size() == 4);
+    CHECK(outs[0].value.elements[0].scalar.f32 == 1.0f);
+    CHECK(outs[0].value.elements[1].scalar.f32 == 0.5f);
+    CHECK(outs[0].value.elements[2].scalar.f32 == 0.25f);
+    CHECK(outs[0].value.elements[3].scalar.f32 == 1.0f);
+}
+
+TEST_CASE("interpreter: fragment derivative — OpDPdx returns zero (single invocation)") {
+    auto mod = load_module_from_file(spv("deriv_frag"));
+    REQUIRE(mod);
+
+    auto sess = create_session(*mod, "main");
+    REQUIRE(sess);
+
+    // Set input color to something non-zero; derivative should still be zero.
+    Value color = Value::make_composite({
+        Value::make_f32(1.0f),
+        Value::make_f32(2.0f),
+        Value::make_f32(3.0f),
+        Value::make_f32(4.0f)
+    });
+    REQUIRE(set_input_location(**sess, 0, color));
+
+    auto reason = run(**sess);
+    if (reason == StopReason::Panic)
+        FAIL("Panic: " + panic_message(**sess));
+    REQUIRE(reason == StopReason::EntryFinished);
+
+    // OpDPdx in single-invocation mode returns zero.
+    auto outs = output_variables(**sess);
+    REQUIRE(outs.size() == 1);
+    REQUIRE(outs[0].value.kind == Value::Kind::Composite);
+    REQUIRE(outs[0].value.elements.size() == 4);
+    CHECK(outs[0].value.elements[0].scalar.f32 == 0.0f);
+    CHECK(outs[0].value.elements[1].scalar.f32 == 0.0f);
+    CHECK(outs[0].value.elements[2].scalar.f32 == 0.0f);
+    CHECK(outs[0].value.elements[3].scalar.f32 == 0.0f);
+}
+
 TEST_CASE("interpreter: breakpoint on result id fires before instruction executes") {
     // In add_uint.spv: %22 = OpIAdd %uint %19 %21  (the addition result)
     // %23 = OpAccessChain ... (out ptr), then OpStore %23 %22.

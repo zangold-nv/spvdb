@@ -58,6 +58,11 @@ Result<void> set_descriptor(Session&, uint32_t set, uint32_t binding,
                              std::span<const std::byte> data);
 Result<void> set_descriptor_json(Session&, uint32_t set, uint32_t binding,
                                   std::string_view json);
+// Bind a vertex/fragment Input variable by its Location decoration.
+// Equivalent to reading a per-vertex attribute or per-fragment interpolant.
+Result<void> set_input_location(Session&, uint32_t location, Value value);
+Result<void> set_input_location_json(Session&, uint32_t location,
+                                      std::string_view json);
 Result<void> set_builtin(Session&, uint32_t builtin_id, Value value);
 
 // ---- Breakpoints -----------------------------------------------------------

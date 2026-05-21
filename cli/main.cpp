@@ -11,6 +11,200 @@
 using namespace spvdb;
 using Replxx = replxx::Replxx;
 
+// ---- SPIR-V opcode name table -----------------------------------------------
+
+static const char* spv_op_name(SpvOp op) {
+    switch (op) {
+        case SpvOpNop:                    return "Nop";
+        case SpvOpUndef:                  return "Undef";
+        case SpvOpLine:                   return "Line";
+        case SpvOpNoLine:                 return "NoLine";
+        case SpvOpModuleProcessed:        return "ModuleProcessed";
+        case SpvOpExtInst:                return "ExtInst";
+        case SpvOpExtInstImport:          return "ExtInstImport";
+        case SpvOpTypeVoid:               return "TypeVoid";
+        case SpvOpTypeBool:               return "TypeBool";
+        case SpvOpTypeInt:                return "TypeInt";
+        case SpvOpTypeFloat:              return "TypeFloat";
+        case SpvOpTypeVector:             return "TypeVector";
+        case SpvOpTypeMatrix:             return "TypeMatrix";
+        case SpvOpTypeArray:              return "TypeArray";
+        case SpvOpTypeRuntimeArray:       return "TypeRuntimeArray";
+        case SpvOpTypeStruct:             return "TypeStruct";
+        case SpvOpTypePointer:            return "TypePointer";
+        case SpvOpTypeFunction:           return "TypeFunction";
+        case SpvOpTypeImage:              return "TypeImage";
+        case SpvOpTypeSampler:            return "TypeSampler";
+        case SpvOpTypeSampledImage:       return "TypeSampledImage";
+        case SpvOpConstant:               return "Constant";
+        case SpvOpConstantTrue:           return "ConstantTrue";
+        case SpvOpConstantFalse:          return "ConstantFalse";
+        case SpvOpConstantNull:           return "ConstantNull";
+        case SpvOpConstantComposite:      return "ConstantComposite";
+        case SpvOpSpecConstant:           return "SpecConstant";
+        case SpvOpSpecConstantTrue:       return "SpecConstantTrue";
+        case SpvOpSpecConstantFalse:      return "SpecConstantFalse";
+        case SpvOpSpecConstantComposite:  return "SpecConstantComposite";
+        case SpvOpSpecConstantOp:         return "SpecConstantOp";
+        case SpvOpVariable:               return "Variable";
+        case SpvOpLoad:                   return "Load";
+        case SpvOpStore:                  return "Store";
+        case SpvOpAccessChain:            return "AccessChain";
+        case SpvOpInBoundsAccessChain:    return "InBoundsAccessChain";
+        case SpvOpCopyObject:             return "CopyObject";
+        case SpvOpFunction:               return "Function";
+        case SpvOpFunctionParameter:      return "FunctionParameter";
+        case SpvOpFunctionCall:           return "FunctionCall";
+        case SpvOpFunctionEnd:            return "FunctionEnd";
+        case SpvOpLabel:                  return "Label";
+        case SpvOpBranch:                 return "Branch";
+        case SpvOpBranchConditional:      return "BranchConditional";
+        case SpvOpSwitch:                 return "Switch";
+        case SpvOpReturn:                 return "Return";
+        case SpvOpReturnValue:            return "ReturnValue";
+        case SpvOpUnreachable:            return "Unreachable";
+        case SpvOpPhi:                    return "Phi";
+        case SpvOpLoopMerge:              return "LoopMerge";
+        case SpvOpSelectionMerge:         return "SelectionMerge";
+        case SpvOpIAdd:                   return "IAdd";
+        case SpvOpISub:                   return "ISub";
+        case SpvOpIMul:                   return "IMul";
+        case SpvOpUDiv:                   return "UDiv";
+        case SpvOpSDiv:                   return "SDiv";
+        case SpvOpUMod:                   return "UMod";
+        case SpvOpSRem:                   return "SRem";
+        case SpvOpSMod:                   return "SMod";
+        case SpvOpFAdd:                   return "FAdd";
+        case SpvOpFSub:                   return "FSub";
+        case SpvOpFMul:                   return "FMul";
+        case SpvOpFDiv:                   return "FDiv";
+        case SpvOpFMod:                   return "FMod";
+        case SpvOpFRem:                   return "FRem";
+        case SpvOpFNegate:                return "FNegate";
+        case SpvOpSNegate:                return "SNegate";
+        case SpvOpVectorTimesScalar:      return "VectorTimesScalar";
+        case SpvOpMatrixTimesScalar:      return "MatrixTimesScalar";
+        case SpvOpMatrixTimesVector:      return "MatrixTimesVector";
+        case SpvOpVectorTimesMatrix:      return "VectorTimesMatrix";
+        case SpvOpMatrixTimesMatrix:      return "MatrixTimesMatrix";
+        case SpvOpOuterProduct:           return "OuterProduct";
+        case SpvOpDot:                    return "Dot";
+        case SpvOpCompositeConstruct:     return "CompositeConstruct";
+        case SpvOpCompositeExtract:       return "CompositeExtract";
+        case SpvOpCompositeInsert:        return "CompositeInsert";
+        case SpvOpVectorExtractDynamic:   return "VectorExtractDynamic";
+        case SpvOpVectorInsertDynamic:    return "VectorInsertDynamic";
+        case SpvOpVectorShuffle:          return "VectorShuffle";
+        case SpvOpTranspose:              return "Transpose";
+        case SpvOpConvertSToF:            return "ConvertSToF";
+        case SpvOpConvertUToF:            return "ConvertUToF";
+        case SpvOpConvertFToS:            return "ConvertFToS";
+        case SpvOpConvertFToU:            return "ConvertFToU";
+        case SpvOpFConvert:               return "FConvert";
+        case SpvOpSConvert:               return "SConvert";
+        case SpvOpUConvert:               return "UConvert";
+        case SpvOpBitcast:                return "Bitcast";
+        case SpvOpShiftLeftLogical:       return "ShiftLeftLogical";
+        case SpvOpShiftRightLogical:      return "ShiftRightLogical";
+        case SpvOpShiftRightArithmetic:   return "ShiftRightArithmetic";
+        case SpvOpBitwiseAnd:             return "BitwiseAnd";
+        case SpvOpBitwiseOr:              return "BitwiseOr";
+        case SpvOpBitwiseXor:             return "BitwiseXor";
+        case SpvOpNot:                    return "Not";
+        case SpvOpLogicalAnd:             return "LogicalAnd";
+        case SpvOpLogicalOr:              return "LogicalOr";
+        case SpvOpLogicalNot:             return "LogicalNot";
+        case SpvOpLogicalEqual:           return "LogicalEqual";
+        case SpvOpLogicalNotEqual:        return "LogicalNotEqual";
+        case SpvOpAny:                    return "Any";
+        case SpvOpAll:                    return "All";
+        case SpvOpIEqual:                 return "IEqual";
+        case SpvOpINotEqual:              return "INotEqual";
+        case SpvOpULessThan:              return "ULessThan";
+        case SpvOpULessThanEqual:         return "ULessThanEqual";
+        case SpvOpUGreaterThan:           return "UGreaterThan";
+        case SpvOpUGreaterThanEqual:      return "UGreaterThanEqual";
+        case SpvOpSLessThan:              return "SLessThan";
+        case SpvOpSLessThanEqual:         return "SLessThanEqual";
+        case SpvOpSGreaterThan:           return "SGreaterThan";
+        case SpvOpSGreaterThanEqual:      return "SGreaterThanEqual";
+        case SpvOpFOrdEqual:              return "FOrdEqual";
+        case SpvOpFOrdNotEqual:           return "FOrdNotEqual";
+        case SpvOpFOrdLessThan:           return "FOrdLessThan";
+        case SpvOpFOrdLessThanEqual:      return "FOrdLessThanEqual";
+        case SpvOpFOrdGreaterThan:        return "FOrdGreaterThan";
+        case SpvOpFOrdGreaterThanEqual:   return "FOrdGreaterThanEqual";
+        case SpvOpFUnordEqual:            return "FUnordEqual";
+        case SpvOpFUnordNotEqual:         return "FUnordNotEqual";
+        case SpvOpFUnordLessThan:         return "FUnordLessThan";
+        case SpvOpFUnordLessThanEqual:    return "FUnordLessThanEqual";
+        case SpvOpFUnordGreaterThan:      return "FUnordGreaterThan";
+        case SpvOpFUnordGreaterThanEqual: return "FUnordGreaterThanEqual";
+        case SpvOpSelect:                 return "Select";
+        case SpvOpIsNan:                  return "IsNan";
+        case SpvOpIsInf:                  return "IsInf";
+        case SpvOpDPdx:                   return "DPdx";
+        case SpvOpDPdy:                   return "DPdy";
+        case SpvOpFwidth:                 return "Fwidth";
+        case SpvOpDPdxFine:               return "DPdxFine";
+        case SpvOpDPdyFine:               return "DPdyFine";
+        case SpvOpFwidthFine:             return "FwidthFine";
+        case SpvOpDPdxCoarse:             return "DPdxCoarse";
+        case SpvOpDPdyCoarse:             return "DPdyCoarse";
+        case SpvOpFwidthCoarse:           return "FwidthCoarse";
+        case SpvOpAtomicLoad:             return "AtomicLoad";
+        case SpvOpAtomicStore:            return "AtomicStore";
+        case SpvOpAtomicExchange:         return "AtomicExchange";
+        case SpvOpAtomicIAdd:             return "AtomicIAdd";
+        case SpvOpAtomicISub:             return "AtomicISub";
+        case SpvOpAtomicAnd:              return "AtomicAnd";
+        case SpvOpAtomicOr:               return "AtomicOr";
+        case SpvOpAtomicXor:              return "AtomicXor";
+        case SpvOpAtomicSMin:             return "AtomicSMin";
+        case SpvOpAtomicSMax:             return "AtomicSMax";
+        case SpvOpAtomicUMin:             return "AtomicUMin";
+        case SpvOpAtomicUMax:             return "AtomicUMax";
+        default:                          return nullptr;
+    }
+}
+
+// Format one instruction as a human-readable string.
+// Shows: [%result = ]OpName [%type] [%op0 %op1 ...]
+static std::string format_instruction(const Instruction& inst, const SpvModule& m) {
+    std::ostringstream s;
+    // Result prefix
+    if (inst.result_id) {
+        auto it = m.names.find(inst.result_id);
+        s << "%";
+        if (it != m.names.end() && !it->second.empty()) s << it->second;
+        else s << inst.result_id;
+        s << " = ";
+    } else {
+        s << "         ";  // alignment for instructions with no result
+    }
+    // Opcode name
+    const char* oname = spv_op_name(inst.opcode);
+    s << "Op";
+    if (oname) s << oname;
+    else s << inst.opcode;
+    // Type operand (if present)
+    if (inst.type_id) {
+        auto it = m.names.find(inst.type_id);
+        s << " %";
+        if (it != m.names.end() && !it->second.empty()) s << it->second;
+        else s << inst.type_id;
+    }
+    // Remaining operands (using operand() which skips type+result)
+    for (uint32_t i = 0; i < inst.operand_count(); ++i) {
+        uint32_t w = inst.operand(i);
+        auto it = m.names.find(w);
+        s << " %";
+        if (it != m.names.end() && !it->second.empty()) s << it->second;
+        else s << w;
+    }
+    return s.str();
+}
+
 // ---- state -----------------------------------------------------------------
 
 static std::shared_ptr<Module>       g_module;
@@ -235,8 +429,25 @@ static void cmd_print(const std::vector<std::string>& args) {
 }
 
 static void cmd_set_input(const std::vector<std::string>& args) {
+    // set input loc <location> <json_literal_or_filename>
     // set input <set> <binding> <json_literal_or_filename>
-    if (args.size() < 5) { std::cout << "Usage: set input <set> <binding> <json>\n"; return; }
+    if (args.size() >= 3 && args[2] == "loc") {
+        // Location-based input binding for vertex/fragment shaders.
+        if (args.size() < 5) { std::cout << "Usage: set input loc <location> <json>\n"; return; }
+        if (!g_module) { std::cout << "No module loaded.\n"; return; }
+        ensure_session();
+        if (!g_session) return;
+        uint32_t loc_idx = std::stoul(args[3]);
+        std::string data = args[4];
+        for (size_t i = 5; i < args.size(); ++i) data += " " + args[i];
+        auto r = set_input_location_json(*g_session, loc_idx, data);
+        if (!r) std::cerr << "Error: " << r.error().message << "\n";
+        else    std::cout << "Set input location " << loc_idx << "\n";
+        return;
+    }
+
+    // Descriptor-based input binding (set + binding).
+    if (args.size() < 5) { std::cout << "Usage: set input <set> <binding> <json>  OR  set input loc <loc> <json>\n"; return; }
     if (!g_module) { std::cout << "No module loaded.\n"; return; }
     ensure_session();
     if (!g_session) return;
@@ -253,7 +464,7 @@ static void cmd_set_input(const std::vector<std::string>& args) {
         if (!r) std::cerr << "Error: " << r.error().message << "\n";
         else    std::cout << "Set descriptor " << s_idx << ":" << b_idx << "\n";
     } else {
-        // Treat as filename ending in .json — load and pass.
+        // Treat as filename — load and pass.
         std::ifstream f(data);
         if (!f) { std::cerr << "Cannot open file: " << data << "\n"; return; }
         std::string json((std::istreambuf_iterator<char>(f)), {});
@@ -269,25 +480,132 @@ static void cmd_set_builtin(const std::vector<std::string>& args) {
     ensure_session();
     if (!g_session) return;
     // Map common builtin names to SpvBuiltIn values.
+    static const struct { const char* name; uint32_t id; } kBuiltins[] = {
+        { "GlobalInvocationID",   SpvBuiltInGlobalInvocationId   },
+        { "LocalInvocationID",    SpvBuiltInLocalInvocationId    },
+        { "WorkgroupID",          SpvBuiltInWorkgroupId          },
+        { "LocalInvocationIndex", SpvBuiltInLocalInvocationIndex },
+        { "VertexIndex",          SpvBuiltInVertexIndex          },
+        { "InstanceIndex",        SpvBuiltInInstanceIndex        },
+        { "Position",             SpvBuiltInPosition             },
+        { "PointSize",            SpvBuiltInPointSize            },
+        { "FragCoord",            SpvBuiltInFragCoord            },
+        { "FrontFacing",          SpvBuiltInFrontFacing          },
+        { "FragDepth",            SpvBuiltInFragDepth            },
+        { "NumWorkgroups",        SpvBuiltInNumWorkgroups        },
+        { "SubgroupSize",         SpvBuiltInSubgroupSize         },
+    };
     uint32_t bi = 0;
-    if      (args[2] == "GlobalInvocationID")  bi = SpvBuiltInGlobalInvocationId;
-    else if (args[2] == "LocalInvocationID")   bi = SpvBuiltInLocalInvocationId;
-    else if (args[2] == "WorkgroupID")         bi = SpvBuiltInWorkgroupId;
-    else if (args[2] == "LocalInvocationIndex")bi = SpvBuiltInLocalInvocationIndex;
-    else { std::cerr << "Unknown builtin: " << args[2] << "\n"; return; }
+    bool found = false;
+    for (auto& kb : kBuiltins) {
+        if (args[2] == kb.name) { bi = kb.id; found = true; break; }
+    }
+    if (!found) { std::cerr << "Unknown builtin: " << args[2] << "\n"; return; }
 
-    // Parse value (x, y, z or single scalar).
+    // Parse value: three components = vec3/uvec3, one component = scalar.
     if (args.size() >= 6) {
+        // Try uint first, then float.
+        try {
+            Value v = Value::make_composite({
+                Value::make_u32(std::stoul(args[3])),
+                Value::make_u32(std::stoul(args[4])),
+                Value::make_u32(std::stoul(args[5]))
+            });
+            set_builtin(*g_session, bi, v);
+        } catch (...) {
+            Value v = Value::make_composite({
+                Value::make_f32(std::stof(args[3])),
+                Value::make_f32(std::stof(args[4])),
+                Value::make_f32(std::stof(args[5]))
+            });
+            set_builtin(*g_session, bi, v);
+        }
+    } else if (args.size() >= 7) {
+        // Four-component (e.g., FragCoord as vec4).
         Value v = Value::make_composite({
-            Value::make_u32(std::stoul(args[3])),
-            Value::make_u32(std::stoul(args[4])),
-            Value::make_u32(std::stoul(args[5]))
+            Value::make_f32(std::stof(args[3])),
+            Value::make_f32(std::stof(args[4])),
+            Value::make_f32(std::stof(args[5])),
+            Value::make_f32(std::stof(args[6]))
         });
         set_builtin(*g_session, bi, v);
     } else {
-        set_builtin(*g_session, bi, Value::make_u32(std::stoul(args[3])));
+        try { set_builtin(*g_session, bi, Value::make_u32(std::stoul(args[3]))); }
+        catch (...) { set_builtin(*g_session, bi, Value::make_f32(std::stof(args[3]))); }
     }
     std::cout << "Set builtin " << args[2] << "\n";
+}
+
+static void cmd_disassemble() {
+    if (!g_session) { std::cout << "No active session.\n"; return; }
+    const PC& pc = g_session->interp.current_pc();
+    if (!pc.valid()) { std::cout << "Execution not started.\n"; return; }
+    const SpvModule& m = *g_session->module;
+    auto fit = m.functions.find(pc.function_id);
+    if (fit == m.functions.end()) { std::cout << "Current function not found.\n"; return; }
+    const Function& fn = fit->second;
+
+    // Print header.
+    std::cout << "Function " << (fn.name.empty() ? "%" + std::to_string(pc.function_id) : fn.name) << ":\n";
+
+    // Show the current block and the two blocks that follow it (if any).
+    auto bit = fn.block_index.find(pc.block_label);
+    if (bit == fn.block_index.end()) return;
+    size_t start_idx = bit->second;
+    size_t end_idx   = std::min(start_idx + 3, fn.blocks.size());
+
+    for (size_t bi2 = start_idx; bi2 < end_idx; ++bi2) {
+        const BasicBlock& bb = fn.blocks[bi2];
+        auto lab_it = m.names.find(bb.label_id);
+        std::cout << "\n%"
+                  << (lab_it != m.names.end() && !lab_it->second.empty()
+                      ? lab_it->second : std::to_string(bb.label_id))
+                  << ":\n";
+        for (size_t i = 0; i < bb.instructions.size(); ++i) {
+            bool is_current = (bi2 == start_idx && i == pc.instr_index);
+            std::cout << (is_current ? " ==> " : "     ")
+                      << format_instruction(bb.instructions[i], m);
+            // Show source location annotation if available.
+            if (i < bb.source_locs.size() && bb.source_locs[i].valid())
+                std::cout << "    ; " << bb.source_locs[i].file
+                          << ":" << bb.source_locs[i].line;
+            std::cout << "\n";
+        }
+    }
+}
+
+static void cmd_list(const std::vector<std::string>& args) {
+    if (!g_session) { std::cout << "No active session.\n"; return; }
+    auto loc = current_location(*g_session);
+    if (!loc.line) { std::cout << "No source location available.\n"; return; }
+
+    // Optionally override line number.
+    uint32_t center_line = loc.line;
+    if (args.size() >= 2) {
+        try { center_line = static_cast<uint32_t>(std::stoul(args[1])); }
+        catch (...) {}
+    }
+
+    const int CONTEXT = 5;
+    uint32_t first = center_line > (uint32_t)CONTEXT ? center_line - CONTEXT : 1;
+    uint32_t last  = center_line + CONTEXT;
+
+    std::ifstream f(loc.file);
+    if (!f) {
+        std::cout << "Source file not found: " << loc.file << "\n";
+        std::cout << "Current location: " << loc.file << ":" << loc.line << "\n";
+        return;
+    }
+
+    std::string line;
+    uint32_t ln = 0;
+    while (std::getline(f, line)) {
+        ++ln;
+        if (ln < first) continue;
+        if (ln > last)  break;
+        std::cout << (ln == center_line ? "=> " : "   ")
+                  << ln << "\t" << line << "\n";
+    }
 }
 
 static void cmd_set_specconst(const std::vector<std::string>& args) {
@@ -340,30 +658,35 @@ static bool dispatch(const std::string& line) {
         if (tokens.size() > 1 && tokens[1] == "specconst") { cmd_set_specconst(tokens); return true; }
         std::cout << "set subcommands: input, builtin, specconst\n"; return true;
     }
+    if (cmd == "disassemble" || cmd == "dis") { cmd_disassemble(); return true; }
+    if (cmd == "list" || cmd == "l")          { cmd_list(tokens);  return true; }
     if (cmd == "help" || cmd == "h" || cmd == "?") {
         std::cout <<
             "Commands:\n"
-            "  file <path.spv>          Load SPIR-V module\n"
-            "  info entries             List entry points\n"
-            "  entry <name>             Select entry point\n"
-            "  run / r                  Execute from the start\n"
-            "  continue / c             Continue execution to next breakpoint\n"
-            "  step / s                 Step one source line (into calls)\n"
-            "  next / n                 Step one source line (over calls)\n"
-            "  finish                   Run until current function returns\n"
-            "  stepi / si               Step one SPIR-V instruction\n"
-            "  break <file>:<line>      Set a source breakpoint\n"
-            "  break %<id>              Set a result-id breakpoint\n"
-            "  delete <bp-id>           Remove a breakpoint\n"
-            "  info breakpoints         List breakpoints\n"
-            "  backtrace / bt           Print call stack\n"
-            "  info locals              Print local variables\n"
-            "  info outputs             Print output variables\n"
-            "  print <var> / p <var>    Print a variable\n"
-            "  set input <s> <b> <json> Bind descriptor from JSON\n"
-            "  set builtin <name> <val> Set a built-in value\n"
-            "  set specconst <id> <val> Override a spec constant\n"
-            "  quit / q                 Exit\n";
+            "  file <path.spv>               Load SPIR-V module\n"
+            "  info entries                  List entry points\n"
+            "  entry <name>                  Select entry point\n"
+            "  run / r                       Execute from the start\n"
+            "  continue / c                  Continue execution to next breakpoint\n"
+            "  step / s                      Step one source line (into calls)\n"
+            "  next / n                      Step one source line (over calls)\n"
+            "  finish                        Run until current function returns\n"
+            "  stepi / si                    Step one SPIR-V instruction\n"
+            "  break <file>:<line>           Set a source breakpoint\n"
+            "  break %<id>                   Set a result-id breakpoint\n"
+            "  delete <bp-id>                Remove a breakpoint\n"
+            "  info breakpoints              List breakpoints\n"
+            "  backtrace / bt                Print call stack\n"
+            "  info locals                   Print local variables\n"
+            "  info outputs                  Print output variables\n"
+            "  print <var> / p <var>         Print a variable\n"
+            "  set input <s> <b> <json>      Bind descriptor (set+binding) from JSON\n"
+            "  set input loc <loc> <json>    Bind input by Location decoration\n"
+            "  set builtin <name> <val>      Set a built-in value\n"
+            "  set specconst <id> <val>      Override a spec constant\n"
+            "  disassemble / dis             Show SPIR-V near current instruction\n"
+            "  list [line] / l [line]        Show source lines near current location\n"
+            "  quit / q                      Exit\n";
         return true;
     }
 

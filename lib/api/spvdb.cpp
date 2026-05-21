@@ -301,6 +301,34 @@ Result<void> set_descriptor_json(Session& s, uint32_t set, uint32_t binding,
                               " binding=" + std::to_string(binding));
 }
 
+Result<void> set_input_location(Session& s, uint32_t location, Value value) {
+    return s.interp.set_input_location(location, std::move(value));
+}
+
+Result<void> set_input_location_json(Session& s, uint32_t location,
+                                      std::string_view json_str) {
+    nlohmann::json j;
+    try { j = nlohmann::json::parse(json_str); }
+    catch (std::exception& e) {
+        return Result<void>::err("JSON parse error: " + std::string(e.what()));
+    }
+    // Find the Input variable at this location to get its type.
+    for (auto& [id, var] : s.module->variables) {
+        if (var.storage_class != SpvStorageClassInput) continue;
+        auto& dset = s.module->decorations_of(id);
+        if (dset.has(SpvDecorationBuiltIn)) continue;
+        if (dset.get(SpvDecorationLocation) == location) {
+            auto* ptr_type = s.module->type_of(var.type_id);
+            if (ptr_type && ptr_type->kind == SpvType::Kind::Pointer) {
+                auto* pt = static_cast<const PointerType*>(ptr_type);
+                Value val = json_to_value(j, pt->pointee.get());
+                return s.interp.set_input_location(location, std::move(val));
+            }
+        }
+    }
+    return Result<void>::err("No Input variable at location=" + std::to_string(location));
+}
+
 Result<void> set_builtin(Session& s, uint32_t builtin_id, Value value) {
     return s.interp.set_builtin(static_cast<SpvBuiltIn>(builtin_id), std::move(value));
 }

@@ -81,6 +81,8 @@ public:
     // --- Inputs ---
     Result<void> set_descriptor(uint32_t set, uint32_t binding,
                                  const Value& value);
+    // Bind a vertex/fragment Input variable by its Location decoration.
+    Result<void> set_input_location(uint32_t location, Value value);
     Result<void> set_builtin(SpvBuiltIn builtin, Value value);
     Result<void> set_spec_constant(uint32_t spec_id, Value value);
 
@@ -141,6 +143,10 @@ private:
     // starts are not lost when init_memory() reinitializes variable storage.
     std::unordered_map<uint32_t, Value> descriptor_staging_;
 
+    // Staged location-based input values: location → Value.
+    // Used by set_input_location(); applied in begin() after init_memory().
+    std::unordered_map<uint32_t, Value> location_staging_;
+
     // Built-in overrides: SpvBuiltIn → Value.
     std::unordered_map<uint32_t, Value> builtin_overrides_;
 
@@ -193,6 +199,7 @@ private:
     StopReason exec_composite(const Instruction& inst);
     StopReason exec_control_flow(const Instruction& inst);
     StopReason exec_ext_inst(const Instruction& inst);
+    StopReason exec_derivative(const Instruction& inst);
 
     // Move PC forward to the next instruction in the current block.
     // Returns false if the block is exhausted (should not happen mid-block).

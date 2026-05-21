@@ -13,6 +13,8 @@ set(SPVASM_SOURCES
     ${SPIRV_DIR}/loop_sum.spvasm
     ${SPIRV_DIR}/loop_sum_inline.spvasm
     ${SPIRV_DIR}/spec_const.spvasm
+    ${SPIRV_DIR}/passthrough_frag.spvasm
+    ${SPIRV_DIR}/deriv_frag.spvasm
 )
 
 set(SPV_BINARIES "")

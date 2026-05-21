@@ -286,6 +286,19 @@ Result<void> Interpreter::begin(const std::string& entry_name) {
         }
     }
 
+    // Apply staged location-based input bindings.
+    for (auto& [loc, val] : location_staging_) {
+        for (auto& [id, var] : module_->variables) {
+            if (var.storage_class != SpvStorageClassInput) continue;
+            auto& dset = module_->decorations_of(id);
+            if (dset.has(SpvDecorationBuiltIn)) continue;
+            if (dset.get(SpvDecorationLocation) == loc) {
+                memory_[id] = val;
+                break;
+            }
+        }
+    }
+
     // Evaluate spec-constants.
     eval_spec_constants();
 
@@ -329,6 +342,22 @@ Result<void> Interpreter::set_descriptor(uint32_t set, uint32_t binding, const V
     }
     return Result<void>::err("No variable at descriptor set=" + std::to_string(set) +
                              " binding=" + std::to_string(binding));
+}
+
+Result<void> Interpreter::set_input_location(uint32_t location, Value value) {
+    // Always stage the value so it survives begin() / init_memory() calls.
+    location_staging_[location] = value;
+    // Also write to memory_ if already initialized.
+    for (auto& [id, var] : module_->variables) {
+        if (var.storage_class != SpvStorageClassInput) continue;
+        auto& dset = module_->decorations_of(id);
+        if (dset.has(SpvDecorationBuiltIn)) continue;
+        if (dset.get(SpvDecorationLocation) == location) {
+            memory_[id] = std::move(value);
+            return Result<void>{};
+        }
+    }
+    return Result<void>::err("No Input variable at location=" + std::to_string(location));
 }
 
 Result<void> Interpreter::set_builtin(SpvBuiltIn builtin, Value value) {
@@ -1150,6 +1179,31 @@ StopReason Interpreter::exec_control_flow(const Instruction& inst) {
     }
 }
 
+// ---- derivative instructions -----------------------------------------------
+
+// Return a zero value of the same scalar/vector shape as `v`.
+static Value zero_like(const Value& v) {
+    if (v.kind == Value::Kind::Composite) {
+        std::vector<Value> elems;
+        elems.reserve(v.elements.size());
+        for (const auto& e : v.elements)
+            elems.push_back(zero_like(e));
+        return Value::make_composite(std::move(elems));
+    }
+    return v.kind == Value::Kind::Float64 ? Value::make_f64(0.0) : Value::make_f32(0.0f);
+}
+
+StopReason Interpreter::exec_derivative(const Instruction& inst) {
+    // Without a 2×2 helper quad, all partial derivatives are undefined.
+    // We return zero (correct for Compute; approximation for Fragment).
+    diagnostics.push_back("derivative op at %" + std::to_string(inst.result_id) +
+                          " returns zero (single-invocation mode; quad execution not yet implemented)");
+    Value p = lookup(inst.operand(0));
+    if (inst.result_id) id_map_[inst.result_id] = zero_like(p);
+    advance_pc();
+    return StopReason::Step;
+}
+
 // ---- extension instructions ------------------------------------------------
 
 StopReason Interpreter::exec_ext_inst(const Instruction& inst) {
@@ -1278,6 +1332,12 @@ StopReason Interpreter::execute_one(const Instruction& inst) {
         case SpvOpPhi: case SpvOpReturn: case SpvOpReturnValue: case SpvOpUnreachable:
         case SpvOpFunctionCall: case SpvOpSelectionMerge: case SpvOpLoopMerge:
             return exec_control_flow(inst);
+
+        // Derivative instructions (return zero in single-invocation mode)
+        case SpvOpDPdx: case SpvOpDPdy: case SpvOpFwidth:
+        case SpvOpDPdxFine: case SpvOpDPdyFine: case SpvOpFwidthFine:
+        case SpvOpDPdxCoarse: case SpvOpDPdyCoarse: case SpvOpFwidthCoarse:
+            return exec_derivative(inst);
 
         // Extension instructions
         case SpvOpExtInst:
