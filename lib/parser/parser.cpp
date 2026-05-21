@@ -98,7 +98,8 @@ static uint8_t opcode_flags(SpvOp op) {
         case SpvOpArrayLength:
         case SpvOpGenericPtrMemSemantics:
         case SpvOpInBoundsPtrAccessChain:
-        case SpvOpFunction:  // already handled above but keep for clarity
+        case SpvOpFunction:
+        case SpvOpFunctionParameter:
         case SpvOpFunctionCall:
         case SpvOpSampledImage:
         case SpvOpImageSampleImplicitLod:

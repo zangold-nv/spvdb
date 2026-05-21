@@ -124,6 +124,11 @@ private:
     // Descriptor bindings: (set << 16 | binding) → variable result-id.
     std::unordered_map<uint32_t, uint32_t> descriptor_map_;
 
+    // Staged descriptor values: (set << 16 | binding) → Value.
+    // Persists across begin() calls so that descriptors set before execution
+    // starts are not lost when init_memory() reinitializes variable storage.
+    std::unordered_map<uint32_t, Value> descriptor_staging_;
+
     // Built-in overrides: SpvBuiltIn → Value.
     std::unordered_map<uint32_t, Value> builtin_overrides_;
 

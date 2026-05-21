@@ -240,6 +240,17 @@ static Value json_to_value(const nlohmann::json& j, const SpvType* type) {
                 elems.push_back(json_to_value(j[i], at->element_type.get()));
             return Value::make_composite(std::move(elems));
         }
+        case SpvType::Kind::RuntimeArray: {
+            auto* rat = static_cast<const RuntimeArrayType*>(type);
+            std::vector<Value> elems;
+            if (j.is_array()) {
+                for (size_t i = 0; i < j.size(); ++i)
+                    elems.push_back(json_to_value(j[i], rat->element_type.get()));
+            } else {
+                elems.push_back(json_to_value(j, rat->element_type.get()));
+            }
+            return Value::make_composite(std::move(elems));
+        }
         default:
             return Value::make_u32(0);
     }
@@ -260,7 +271,28 @@ Result<void> set_descriptor_json(Session& s, uint32_t set, uint32_t binding,
             auto* ptr_type = s.module->type_of(var.type_id);
             if (ptr_type && ptr_type->kind == SpvType::Kind::Pointer) {
                 auto* pt = static_cast<const PointerType*>(ptr_type);
-                Value val = json_to_value(j, pt->pointee.get());
+                const SpvType* effective_type = pt->pointee.get();
+                bool wrap_in_struct = false;
+
+                // Transparently unwrap single-member Block structs (Vulkan SSBO pattern).
+                // Lets callers pass [1, 2, 3] instead of [[1, 2, 3]] for a
+                // buffer whose type is Block { RuntimeArray<T> }.
+                if (effective_type &&
+                    effective_type->kind == SpvType::Kind::Struct &&
+                    j.is_array()) {
+                    auto* st = static_cast<const StructType*>(effective_type);
+                    if (st->members.size() == 1 &&
+                        st->members[0].type &&
+                        (st->members[0].type->kind == SpvType::Kind::RuntimeArray ||
+                         st->members[0].type->kind == SpvType::Kind::Array)) {
+                        effective_type = st->members[0].type.get();
+                        wrap_in_struct = true;
+                    }
+                }
+
+                Value val = json_to_value(j, effective_type);
+                if (wrap_in_struct)
+                    val = Value::make_composite({std::move(val)});
                 return s.interp.set_descriptor(set, binding, val);
             }
         }

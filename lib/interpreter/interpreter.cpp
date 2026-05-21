@@ -132,6 +132,9 @@ void Interpreter::init_memory() {
         else
             v = pattern_for_type(pointee, *module_, opts_.init_value);
         memory_[id] = std::move(v);
+        // Also expose a pointer-to-variable in id_map_ so that OpAccessChain
+        // and OpLoad/OpStore can look up the variable by its result id.
+        id_map_[id] = Value::make_pointer(pt->storage_class, id, {});
     }
 }
 
@@ -155,10 +158,39 @@ void Interpreter::eval_spec_constants() {
                 continue;
             }
         }
-        // Use default value from the module.
-        auto cit = module_->constants.find(id);
-        if (cit != module_->constants.end())
-            id_map_[id] = cit->second;
+        // Use default value from scalar_words (not module_->constants, which
+        // stores a zero placeholder rather than the actual default).
+        auto* t = module_->type_of(sc.type_id);
+        if (t && t->kind == SpvType::Kind::Bool) {
+            id_map_[id] = Value::make_bool(!sc.scalar_words.empty() &&
+                                            sc.scalar_words[0] != 0);
+        } else if (t && t->kind == SpvType::Kind::Int) {
+            auto* it = static_cast<const IntType*>(t);
+            if (it->width <= 32) {
+                uint32_t raw = sc.scalar_words.empty() ? 0 : sc.scalar_words[0];
+                id_map_[id] = it->is_signed ? Value::make_i32(static_cast<int32_t>(raw))
+                                             : Value::make_u32(raw);
+            } else {
+                uint32_t lo = sc.scalar_words.size() > 0 ? sc.scalar_words[0] : 0;
+                uint32_t hi = sc.scalar_words.size() > 1 ? sc.scalar_words[1] : 0;
+                uint64_t raw = (static_cast<uint64_t>(hi) << 32) | lo;
+                id_map_[id] = it->is_signed ? Value::make_i64(static_cast<int64_t>(raw))
+                                             : Value::make_u64(raw);
+            }
+        } else if (t && t->kind == SpvType::Kind::Float) {
+            auto* ft = static_cast<const FloatType*>(t);
+            if (ft->width <= 32) {
+                uint32_t raw = sc.scalar_words.empty() ? 0 : sc.scalar_words[0];
+                float f; std::memcpy(&f, &raw, sizeof(f));
+                id_map_[id] = Value::make_f32(f);
+            } else {
+                uint32_t lo = sc.scalar_words.size() > 0 ? sc.scalar_words[0] : 0;
+                uint32_t hi = sc.scalar_words.size() > 1 ? sc.scalar_words[1] : 0;
+                uint64_t raw = (static_cast<uint64_t>(hi) << 32) | lo;
+                double d; std::memcpy(&d, &raw, sizeof(d));
+                id_map_[id] = Value::make_f64(d);
+            }
+        }
     }
 
     // Evaluate composites (may depend on scalar results above).
@@ -241,9 +273,17 @@ Result<void> Interpreter::begin(const std::string& entry_name) {
         }
     }
 
-    // Apply descriptor bindings.
-    for (auto& [key, var_id] : descriptor_map_) {
-        // Variable must already be in memory_.
+    // Apply staged descriptor bindings (overrides values from init_memory).
+    for (auto& [key, val] : descriptor_staging_) {
+        uint32_t s = key >> 16, b = key & 0xFFFF;
+        for (auto& [id, var] : module_->variables) {
+            auto& dset = module_->decorations_of(id);
+            if (dset.get(SpvDecorationDescriptorSet) == s &&
+                dset.get(SpvDecorationBinding) == b) {
+                memory_[id] = val;
+                break;
+            }
+        }
     }
 
     // Evaluate spec-constants.
@@ -275,7 +315,10 @@ Result<void> Interpreter::restart() {
 }
 
 Result<void> Interpreter::set_descriptor(uint32_t set, uint32_t binding, const Value& value) {
-    // Find a variable with matching DescriptorSet and Binding decorations.
+    // Always stage the value so it survives begin() / init_memory() calls.
+    descriptor_staging_[(set << 16) | binding] = value;
+
+    // Also write to memory_ immediately (takes effect if begin() already ran).
     for (auto& [id, var] : module_->variables) {
         auto& dset = module_->decorations_of(id);
         if (dset.get(SpvDecorationDescriptorSet) == set &&
