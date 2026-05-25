@@ -266,6 +266,7 @@ Result<void> Interpreter::begin(const std::string& entry_name) {
     panicked_  = false;
     panic_msg_ = {};
     id_map_.clear();
+    debug_var_values_.clear();
 
     // Initialize memory for all variables.
     init_memory();
@@ -1431,7 +1432,16 @@ StopReason Interpreter::exec_ext_inst(const Instruction& inst) {
         Value result = dispatch_glsl_std_450(ext_inst, args, diagnostics);
         if (inst.result_id) id_map_[inst.result_id] = std::move(result);
     } else if (eit->second.rfind("NonSemantic.", 0) == 0) {
-        // NonSemantic extensions carry only debug/reflection metadata; no-op silently.
+        // Handle DebugValue (opcode 29): track current SSA value for a debug variable.
+        if (eit->second == "NonSemantic.Shader.DebugInfo.100" &&
+            ext_inst == 29 /* DebugValue */ &&
+            inst.operand_count() >= 5) {
+            // operand(2) = DebugLocalVariable result-id
+            // operand(3) = current SSA value result-id
+            uint32_t debug_var_id = inst.operand(2);
+            uint32_t value_id     = inst.operand(3);
+            debug_var_values_[debug_var_id] = lookup(value_id);
+        }
         if (inst.result_id) id_map_[inst.result_id] = Value::make_u32(0);
     } else {
         diagnostics.push_back("OpExtInst: unsupported extension set " + eit->second);
@@ -1546,6 +1556,14 @@ std::vector<std::pair<std::string, Value>> Interpreter::local_variables() const 
         if (vit->second.storage_class != SpvStorageClassFunction) continue;
         result.emplace_back(vit->second.name.empty() ?
                             "%" + std::to_string(id) : vit->second.name, val);
+    }
+    // Also include SSA debug variable values from DebugValue instructions.
+    for (auto& [debug_var_id, val] : debug_var_values_) {
+        auto dit = module_->debug_local_vars.find(debug_var_id);
+        std::string name = (dit != module_->debug_local_vars.end() && !dit->second.empty())
+                         ? dit->second
+                         : "%" + std::to_string(debug_var_id);
+        result.emplace_back(std::move(name), val);
     }
     return result;
 }

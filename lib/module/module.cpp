@@ -214,6 +214,14 @@ struct ModuleBuilder {
                             auto sit = m->strings.find(str_id);
                             if (sit != m->strings.end())
                                 m->debug_sources[inst.result_id] = sit->second;
+                        } else if (debug_op == 26 /* DebugLocalVariable */) {
+                            // words[4] = name OpString result-id
+                            if (inst.words.size() >= 5) {
+                                uint32_t str_id = inst.words[4];
+                                auto sit = m->strings.find(str_id);
+                                if (sit != m->strings.end())
+                                    m->debug_local_vars[inst.result_id] = sit->second;
+                            }
                         }
                     }
                 }

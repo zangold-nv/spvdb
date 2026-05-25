@@ -163,6 +163,10 @@ private:
     // var_id → staging_key; rebuilt in begin() from image_staging_ + module variables.
     std::unordered_map<uint32_t, uint32_t>  image_var_map_;
 
+    // SSA debug variable values from DebugValue instructions.
+    // Maps DebugLocalVariable result-id → most recently assigned Value.
+    std::unordered_map<uint32_t, Value> debug_var_values_;
+
     // Call stack.
     std::vector<CallFrame> call_stack_;
 

@@ -54,3 +54,7 @@ file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tmp")
 
 include(Catch)
 catch_discover_tests(spvdb_tests)
+
+# ---- Slang integration tests (optional; requires slangc) --------------------
+
+add_subdirectory(slang)

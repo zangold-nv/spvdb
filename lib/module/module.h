@@ -160,6 +160,10 @@ struct SpvModule {
     // Populated from global DebugSource instructions during build_module().
     std::unordered_map<uint32_t, std::string> debug_sources;
 
+    // NonSemantic.Shader.DebugInfo.100 DebugLocalVariable result-id → name.
+    // Populated from global DebugLocalVariable instructions during build_module().
+    std::unordered_map<uint32_t, std::string> debug_local_vars;
+
     // Capabilities declared by the module.
     std::vector<SpvCapability> capabilities;
 
