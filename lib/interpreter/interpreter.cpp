@@ -267,6 +267,8 @@ Result<void> Interpreter::begin(const std::string& entry_name) {
     panic_msg_ = {};
     id_map_.clear();
     debug_var_values_.clear();
+    current_scope_id_     = 0;
+    current_inlined_at_id_ = 0;
 
     // Initialize memory for all variables.
     init_memory();
@@ -1432,15 +1434,22 @@ StopReason Interpreter::exec_ext_inst(const Instruction& inst) {
         Value result = dispatch_glsl_std_450(ext_inst, args, diagnostics);
         if (inst.result_id) id_map_[inst.result_id] = std::move(result);
     } else if (eit->second.rfind("NonSemantic.", 0) == 0) {
-        // Handle DebugValue (opcode 29): track current SSA value for a debug variable.
-        if (eit->second == "NonSemantic.Shader.DebugInfo.100" &&
-            ext_inst == 29 /* DebugValue */ &&
-            inst.operand_count() >= 5) {
-            // operand(2) = DebugLocalVariable result-id
-            // operand(3) = current SSA value result-id
-            uint32_t debug_var_id = inst.operand(2);
-            uint32_t value_id     = inst.operand(3);
-            debug_var_values_[debug_var_id] = lookup(value_id);
+        if (eit->second == "NonSemantic.Shader.DebugInfo.100") {
+            if (ext_inst == 23 /* DebugScope */ && inst.operand_count() >= 3) {
+                // operand(2) = scope (DebugFunction result-id)
+                // operand(3) = optional DebugInlinedAt result-id
+                current_scope_id_      = inst.operand(2);
+                current_inlined_at_id_ = inst.operand_count() >= 4 ? inst.operand(3) : 0;
+            } else if (ext_inst == 24 /* DebugNoScope */) {
+                current_scope_id_      = 0;
+                current_inlined_at_id_ = 0;
+            } else if (ext_inst == 29 /* DebugValue */ && inst.operand_count() >= 5) {
+                // operand(2) = DebugLocalVariable result-id
+                // operand(3) = current SSA value result-id
+                uint32_t debug_var_id = inst.operand(2);
+                uint32_t value_id     = inst.operand(3);
+                debug_var_values_[debug_var_id] = lookup(value_id);
+            }
         }
         if (inst.result_id) id_map_[inst.result_id] = Value::make_u32(0);
     } else {

@@ -100,6 +100,11 @@ public:
     // Returns an invalid SourceLoc (line==0) when no debug info is available.
     SourceLoc current_source_location() const;
 
+    // NonSemantic debug scope tracking.
+    // Returns 0 when no DebugScope has been seen yet or after DebugNoScope.
+    uint32_t current_debug_scope_id()     const { return current_scope_id_; }
+    uint32_t current_debug_inlined_at_id() const { return current_inlined_at_id_; }
+
     // All variables currently live in the id_map.
     std::vector<std::pair<std::string, Value>> local_variables() const;
 
@@ -166,6 +171,10 @@ private:
     // SSA debug variable values from DebugValue instructions.
     // Maps DebugLocalVariable result-id → most recently assigned Value.
     std::unordered_map<uint32_t, Value> debug_var_values_;
+
+    // Current NonSemantic DebugScope state.
+    uint32_t current_scope_id_     = 0;  // DebugFunction result-id
+    uint32_t current_inlined_at_id_ = 0; // DebugInlinedAt result-id (0 = not inlined)
 
     // Call stack.
     std::vector<CallFrame> call_stack_;

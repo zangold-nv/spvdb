@@ -164,6 +164,21 @@ struct SpvModule {
     // Populated from global DebugLocalVariable instructions during build_module().
     std::unordered_map<uint32_t, std::string> debug_local_vars;
 
+    // NonSemantic.Shader.DebugInfo.100 DebugFunction result-id → {name, source_id}.
+    struct DebugFunctionInfo {
+        std::string name;
+        uint32_t    source_id = 0;  // DebugSource result-id for the source file
+    };
+    std::unordered_map<uint32_t, DebugFunctionInfo> debug_functions;
+
+    // NonSemantic.Shader.DebugInfo.100 DebugInlinedAt result-id → call-site info.
+    struct DebugInlinedAtInfo {
+        uint32_t line          = 0;  // line number at the call site
+        uint32_t scope_id      = 0;  // DebugFunction result-id of the containing scope
+        uint32_t inlined_at_id = 0;  // parent DebugInlinedAt for nested inlining (0 if none)
+    };
+    std::unordered_map<uint32_t, DebugInlinedAtInfo> debug_inlined_at;
+
     // Capabilities declared by the module.
     std::vector<SpvCapability> capabilities;
 

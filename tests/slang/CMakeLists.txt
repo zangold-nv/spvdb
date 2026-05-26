@@ -22,6 +22,7 @@ file(MAKE_DIRECTORY ${SLANG_SPV_DIR})
 
 set(SLANG_SOURCES
     ${SLANG_SRC_DIR}/add_buffers.slang
+    ${SLANG_SRC_DIR}/inlined_func.slang
 )
 
 set(SLANG_SPV_BINARIES "")
@@ -51,6 +52,7 @@ target_link_libraries(spvdb_slang_tests PRIVATE spvdb Catch2::Catch2WithMain)
 
 target_compile_definitions(spvdb_slang_tests PRIVATE
     SLANG_TEST_SPV_DIR="${SLANG_SPV_DIR}"
+    SLANG_TEST_SRC_DIR="${SLANG_SRC_DIR}"
 )
 
 include(Catch)

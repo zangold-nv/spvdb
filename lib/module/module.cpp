@@ -214,6 +214,33 @@ struct ModuleBuilder {
                             auto sit = m->strings.find(str_id);
                             if (sit != m->strings.end())
                                 m->debug_sources[inst.result_id] = sit->second;
+                        } else if (debug_op == 20 /* DebugFunction */) {
+                            // words[4]=name_string_id, words[5]=type_id,
+                            // words[6]=source_id, words[7]=line_constant_id, ...
+                            if (inst.words.size() >= 7) {
+                                SpvModule::DebugFunctionInfo dfi;
+                                auto sit = m->strings.find(inst.words[4]);
+                                if (sit != m->strings.end()) dfi.name = sit->second;
+                                dfi.source_id = inst.words[6];
+                                m->debug_functions[inst.result_id] = std::move(dfi);
+                            }
+                        } else if (debug_op == 25 /* DebugInlinedAt */) {
+                            // words[4]=line_constant_id, words[5]=scope_id,
+                            // words[6]=optional parent DebugInlinedAt
+                            if (inst.words.size() >= 6) {
+                                SpvModule::DebugInlinedAtInfo dia;
+                                uint32_t line_cid = inst.words[4];
+                                auto lit = m->constants.find(line_cid);
+                                if (lit != m->constants.end()) {
+                                    if (lit->second.kind == Value::Kind::UInt32)
+                                        dia.line = lit->second.scalar.u32;
+                                    else if (lit->second.kind == Value::Kind::Int32)
+                                        dia.line = static_cast<uint32_t>(lit->second.scalar.i32);
+                                }
+                                dia.scope_id      = inst.words[5];
+                                dia.inlined_at_id = inst.words.size() >= 7 ? inst.words[6] : 0;
+                                m->debug_inlined_at[inst.result_id] = std::move(dia);
+                            }
                         } else if (debug_op == 26 /* DebugLocalVariable */) {
                             // words[4] = name OpString result-id
                             if (inst.words.size() >= 5) {

@@ -475,20 +475,55 @@ static SourceLocation loc_from_pc(const ::spvdb::SpvModule& m, const PC& pc) {
 std::vector<Frame> backtrace(const Session& s) {
     std::vector<Frame> result;
 
+    uint32_t scope_id      = s.interp.current_debug_scope_id();
+    uint32_t inlined_at_id = s.interp.current_debug_inlined_at_id();
+
     // Innermost frame: current execution position.
     {
         Frame f;
-        const PC& pc = s.interp.current_pc();
-        auto fit = s.module->functions.find(pc.function_id);
-        if (fit != s.module->functions.end())
-            f.function_name = fit->second.name.empty() ?
-                "%" + std::to_string(pc.function_id) : fit->second.name;
+        // Prefer the NonSemantic debug function name over the SPIR-V function name
+        // (e.g. when we're inside an inlined function the SPIR-V function is the
+        // caller, but the debug scope names the callee).
+        if (scope_id != 0) {
+            auto dit = s.module->debug_functions.find(scope_id);
+            if (dit != s.module->debug_functions.end() && !dit->second.name.empty())
+                f.function_name = dit->second.name;
+        }
+        if (f.function_name.empty()) {
+            const PC& pc = s.interp.current_pc();
+            auto fit = s.module->functions.find(pc.function_id);
+            if (fit != s.module->functions.end())
+                f.function_name = fit->second.name.empty() ?
+                    "%" + std::to_string(pc.function_id) : fit->second.name;
+        }
         auto loc = s.interp.current_source_location();
         f.loc = { loc.file, loc.line, loc.column };
         result.push_back(std::move(f));
     }
 
-    // Outer frames: callers, most recent first.
+    // Walk the DebugInlinedAt chain to reconstruct virtual inlined call frames.
+    while (inlined_at_id != 0) {
+        auto ait = s.module->debug_inlined_at.find(inlined_at_id);
+        if (ait == s.module->debug_inlined_at.end()) break;
+        const auto& ia = ait->second;
+
+        Frame caller;
+        if (ia.scope_id != 0) {
+            auto dit = s.module->debug_functions.find(ia.scope_id);
+            if (dit != s.module->debug_functions.end() && !dit->second.name.empty())
+                caller.function_name = dit->second.name;
+            // Source file from the scope's DebugFunction → DebugSource.
+            auto src_it = s.module->debug_sources.find(dit->second.source_id);
+            if (src_it != s.module->debug_sources.end())
+                caller.loc.file = src_it->second;
+        }
+        caller.loc.line = ia.line;
+        result.push_back(std::move(caller));
+
+        inlined_at_id = ia.inlined_at_id;
+    }
+
+    // Outer frames: actual (non-inlined) callers from the call stack.
     auto stack = s.interp.call_stack();
     for (auto it = stack.rbegin(); it != stack.rend(); ++it) {
         Frame f;

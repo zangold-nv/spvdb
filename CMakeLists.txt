@@ -7,30 +7,60 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # ---- Third-party dependencies -----------------------------------------------
 
-# SPIRV-Headers (header-only; provides spirv/unified1/spirv.h)
+include(FetchContent)
+
+# SPIRV-Headers (git submodule; header-only; provides spirv/unified1/spirv.h)
 add_library(spirv-headers INTERFACE)
 target_include_directories(spirv-headers INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/SPIRV-Headers/include)
 
-# nlohmann/json (header-only)
-add_library(nlohmann_json INTERFACE)
-target_include_directories(nlohmann_json INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json/include)
-
-# stb (single-file headers; image loading via stb_image.h)
+# stb (single-file headers; image loading via stb_image.h; committed in-tree)
 add_library(stb INTERFACE)
 target_include_directories(stb INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb)
 
-# Catch2 (for tests)
-option(CATCH_INSTALL_DOCS "" OFF)
-option(CATCH_INSTALL_EXTRAS "" OFF)
-add_subdirectory(third_party/Catch2 EXCLUDE_FROM_ALL)
+# nlohmann/json (header-only) — use local copy if present, else fetch.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json/include/nlohmann/json.hpp)
+    add_library(nlohmann_json INTERFACE)
+    target_include_directories(nlohmann_json INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nlohmann_json/include)
+else()
+    FetchContent_Declare(nlohmann_json_src
+        GIT_REPOSITORY https://github.com/nlohmann/json.git
+        GIT_TAG        d96329f8d6dee5da67c5ebd861acab25445d0ddb)
+    FetchContent_Populate(nlohmann_json_src)
+    add_library(nlohmann_json INTERFACE)
+    target_include_directories(nlohmann_json INTERFACE
+        ${nlohmann_json_src_SOURCE_DIR}/include)
+endif()
 
-# replxx (for CLI)
-option(REPLXX_BUILD_EXAMPLES "" OFF)
-option(REPLXX_BUILD_PACKAGE "" OFF)
-add_subdirectory(third_party/replxx EXCLUDE_FROM_ALL)
+# Catch2 (for tests) — use local copy if present, else fetch.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/Catch2/CMakeLists.txt)
+    set(CATCH_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
+    set(CATCH_INSTALL_EXTRAS OFF CACHE BOOL "" FORCE)
+    add_subdirectory(third_party/Catch2 EXCLUDE_FROM_ALL)
+else()
+    FetchContent_Declare(Catch2
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG        69e0473f6e98d47c93518424c08ee69ee632c0f0)
+    set(CATCH_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
+    set(CATCH_INSTALL_EXTRAS OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(Catch2)
+endif()
+
+# replxx (for CLI) — use local copy if present, else fetch.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/replxx/CMakeLists.txt)
+    set(REPLXX_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(REPLXX_BUILD_PACKAGE  OFF CACHE BOOL "" FORCE)
+    add_subdirectory(third_party/replxx EXCLUDE_FROM_ALL)
+else()
+    FetchContent_Declare(replxx
+        GIT_REPOSITORY https://github.com/AmokHuginnsson/replxx.git
+        GIT_TAG        1f149bfe20bf6e49c1afd4154eaf0032c8c2fda2)
+    set(REPLXX_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(REPLXX_BUILD_PACKAGE  OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(replxx)
+endif()
 
 # ---- libspvdb ---------------------------------------------------------------
 
