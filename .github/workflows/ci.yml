@@ -60,16 +60,30 @@ jobs:
       - name: Install CMake and Ninja
         uses: lukka/get-cmake@latest
 
-      - name: Install spirv-tools via vcpkg
-        run: vcpkg install spirv-tools:x64-windows
-
-      - name: Add spirv-tools to PATH
+      - name: Install spirv-tools and add to PATH
         shell: pwsh
         run: |
-          $tools = Get-ChildItem -Recurse -Filter "spirv-as.exe" "C:\vcpkg\installed" |
-                   Select-Object -First 1 -ExpandProperty DirectoryName
-          if (-not $tools) { Write-Error "spirv-as.exe not found"; exit 1 }
-          echo $tools >> $env:GITHUB_PATH
+          vcpkg install spirv-tools:x64-windows
+          # vcpkg tools directory (standard location)
+          $known = "C:\vcpkg\installed\x64-windows\tools\spirv-tools"
+          if (Test-Path "$known\spirv-as.exe") {
+            Write-Host "Found spirv-as at known path: $known"
+            echo $known >> $env:GITHUB_PATH
+          } else {
+            # Fallback: recursive search under C:\vcpkg
+            Write-Host "Searching for spirv-as.exe under C:\vcpkg ..."
+            $hit = Get-ChildItem -Path "C:\vcpkg" -Filter "spirv-as.exe" -Recurse -ErrorAction SilentlyContinue |
+                   Select-Object -First 1
+            if ($hit) {
+              Write-Host "Found: $($hit.FullName)"
+              echo $hit.DirectoryName >> $env:GITHUB_PATH
+            } else {
+              Write-Host "spirv-as.exe not found in vcpkg — listing installed tools:"
+              Get-ChildItem -Path "C:\vcpkg\installed" -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue |
+                Select-Object FullName
+              exit 1
+            }
+          }
 
       - name: Download slangc
         shell: pwsh
