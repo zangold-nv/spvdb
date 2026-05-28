@@ -743,6 +743,29 @@ static bool dispatch(const std::string& line) {
 // ---- main ------------------------------------------------------------------
 
 int main(int argc, char** argv) {
+    // Parse --script <file> / -x <file>: run script non-interactively and exit.
+    const char* script_path = nullptr;
+    int spv_arg = -1;
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        if ((a == "--script" || a == "-x") && i + 1 < argc) {
+            script_path = argv[++i];
+        } else if (spv_arg < 0) {
+            spv_arg = i;
+        }
+    }
+
+    if (script_path) {
+        // Non-interactive script mode: source the file and exit.
+        if (spv_arg >= 0) {
+            std::vector<std::string> args = {"file", argv[spv_arg]};
+            cmd_file(args);
+        }
+        std::vector<std::string> src_args = {"source", script_path};
+        cmd_source(src_args);
+        return 0;
+    }
+
     Replxx rx;
     rx.set_word_break_characters(" \t\n");
     rx.history_load(".spvdb_history");
@@ -750,11 +773,12 @@ int main(int argc, char** argv) {
     std::cout << "spvdb — SPIR-V debugger  (type 'help' for commands)\n";
 
     // If a .spv was passed as argument, auto-load it.
-    if (argc >= 2) {
-        std::vector<std::string> args = {"file", argv[1]};
+    if (spv_arg >= 0) {
+        std::vector<std::string> args = {"file", argv[spv_arg]};
         cmd_file(args);
-        if (argc >= 3) {
-            std::vector<std::string> eargs = {"entry", argv[2]};
+        // entry point as second positional arg (legacy: argv[2] before --script support)
+        if (spv_arg + 1 < argc && argv[spv_arg + 1][0] != '-') {
+            std::vector<std::string> eargs = {"entry", argv[spv_arg + 1]};
             cmd_entry(eargs);
         }
     }
