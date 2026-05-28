@@ -45,15 +45,7 @@ jobs:
         run: cmake --build build
 
       - name: Test
-        shell: pwsh
-        run: ctest --test-dir build --output-on-failure -V 2>&1 | Tee-Object test-output.txt; exit $LASTEXITCODE
-
-      - name: Upload test output on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-test-output
-          path: test-output.txt
+        run: ctest --test-dir build --output-on-failure
 
   # --------------------------------------------------------------------------
   # Windows build + test
@@ -98,4 +90,12 @@ jobs:
         run: cmake --build build
 
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        shell: pwsh
+        run: ctest --test-dir build --output-on-failure -V 2>&1 | Tee-Object test-output.txt; exit $LASTEXITCODE
+
+      - name: Upload test output on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-output
+          path: test-output.txt
