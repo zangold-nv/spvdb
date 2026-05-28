@@ -201,12 +201,12 @@ Value dispatch_glsl_std_450(uint32_t inst_id, const std::vector<Value>& args,
 
     switch (inst_id) {
         // --- Unary float ---
-        case Round:       return fmap1(get(0), std::roundf,  std::round);
+        case Round:       return fmap1(get(0), std::round,  std::round);
         case RoundEven:   return fmap1(get(0), std::nearbyintf, std::nearbyint);
-        case Trunc:       return fmap1(get(0), std::truncf,  std::trunc);
-        case Floor:       return fmap1(get(0), std::floorf,  std::floor);
-        case Ceil:        return fmap1(get(0), std::ceilf,   std::ceil);
-        case FAbs:        return fmap1(get(0), std::fabsf,   std::fabs);
+        case Trunc:       return fmap1(get(0), std::trunc,  std::trunc);
+        case Floor:       return fmap1(get(0), std::floor,  std::floor);
+        case Ceil:        return fmap1(get(0), std::ceil,   std::ceil);
+        case FAbs:        return fmap1(get(0), std::fabs,   std::fabs);
         case FSign: {
             auto sgn = [](const Value& x) -> Value {
                 if (x.kind == Value::Kind::Float32)
@@ -220,35 +220,35 @@ Value dispatch_glsl_std_450(uint32_t inst_id, const std::vector<Value>& args,
             }
             return sgn(x);
         }
-        case Fract:       return fmap1(get(0), [](float v)  { return v - std::floorf(v); },
+        case Fract:       return fmap1(get(0), [](float v)  { return v - std::floor(v); },
                                                [](double v) { return v - std::floor(v);  });
         case Radians:     return fmap1(get(0), [](float v)  { return v * (3.14159265358979f / 180.f); },
                                                [](double v) { return v * (3.14159265358979323846 / 180.0); });
         case Degrees:     return fmap1(get(0), [](float v)  { return v * (180.f / 3.14159265358979f); },
                                                [](double v) { return v * (180.0 / 3.14159265358979323846); });
-        case Sin:         return fmap1(get(0), std::sinf,   std::sin);
-        case Cos:         return fmap1(get(0), std::cosf,   std::cos);
-        case Tan:         return fmap1(get(0), std::tanf,   std::tan);
-        case Asin:        return fmap1(get(0), std::asinf,  std::asin);
-        case Acos:        return fmap1(get(0), std::acosf,  std::acos);
-        case Atan:        return fmap1(get(0), std::atanf,  std::atan);
-        case Sinh:        return fmap1(get(0), std::sinhf,  std::sinh);
-        case Cosh:        return fmap1(get(0), std::coshf,  std::cosh);
-        case Tanh:        return fmap1(get(0), std::tanhf,  std::tanh);
+        case Sin:         return fmap1(get(0), std::sin,   std::sin);
+        case Cos:         return fmap1(get(0), std::cos,   std::cos);
+        case Tan:         return fmap1(get(0), std::tan,   std::tan);
+        case Asin:        return fmap1(get(0), std::asin,  std::asin);
+        case Acos:        return fmap1(get(0), std::acos,  std::acos);
+        case Atan:        return fmap1(get(0), std::atan,  std::atan);
+        case Sinh:        return fmap1(get(0), std::sinh,  std::sinh);
+        case Cosh:        return fmap1(get(0), std::cosh,  std::cosh);
+        case Tanh:        return fmap1(get(0), std::tanh,  std::tanh);
         case Asinh:       return fmap1(get(0), std::asinhf, std::asinh);
         case Acosh:       return fmap1(get(0), std::acoshf, std::acosh);
         case Atanh:       return fmap1(get(0), std::atanhf, std::atanh);
-        case Exp:         return fmap1(get(0), std::expf,   std::exp);
-        case Log:         return fmap1(get(0), std::logf,   std::log);
-        case Exp2:        return fmap1(get(0), std::exp2f,  std::exp2);
-        case Log2:        return fmap1(get(0), std::log2f,  std::log2);
-        case Sqrt:        return fmap1(get(0), std::sqrtf,  std::sqrt);
-        case InverseSqrt: return fmap1(get(0), [](float v)  { return 1.f / std::sqrtf(v); },
+        case Exp:         return fmap1(get(0), std::exp,   std::exp);
+        case Log:         return fmap1(get(0), std::log,   std::log);
+        case Exp2:        return fmap1(get(0), std::exp2,  std::exp2);
+        case Log2:        return fmap1(get(0), std::log2,  std::log2);
+        case Sqrt:        return fmap1(get(0), std::sqrt,  std::sqrt);
+        case InverseSqrt: return fmap1(get(0), [](float v)  { return 1.f / std::sqrt(v); },
                                                [](double v) { return 1.0 / std::sqrt(v);  });
 
         // --- Binary float ---
-        case Atan2:       return fmap2(get(0), get(1), std::atan2f, std::atan2);
-        case Pow:         return fmap2(get(0), get(1), std::powf,   std::pow);
+        case Atan2:       return fmap2(get(0), get(1), std::atan2, std::atan2);
+        case Pow:         return fmap2(get(0), get(1), std::pow,   std::pow);
         case FMin:        return fmap2(get(0), get(1), std::fminf,  std::fmin);
         case FMax:        return fmap2(get(0), get(1), std::fmaxf,  std::fmax);
         case NMin:        return fmap2(get(0), get(1), std::fminf,  std::fmin); // NaN-propagating = same on IEEE
@@ -479,7 +479,7 @@ Value dispatch_glsl_std_450(uint32_t inst_id, const std::vector<Value>& args,
                 return vec_length(d);
             }
             if (a.kind == Value::Kind::Float32)
-                return Value::make_f32(std::fabsf(a.scalar.f32 - b.scalar.f32));
+                return Value::make_f32(std::fabs(a.scalar.f32 - b.scalar.f32));
             return Value::make_f64(std::fabs(a.scalar.f64 - b.scalar.f64));
         }
         case Cross: {
@@ -574,7 +574,7 @@ Value dispatch_glsl_std_450(uint32_t inst_id, const std::vector<Value>& args,
                 }
                 return Value::make_f32(0.f);
             }
-            float coef = eta * dNI + std::sqrtf(k);
+            float coef = eta * dNI + std::sqrt(k);
             if (I.kind == Value::Kind::Composite) {
                 std::vector<Value> out;
                 for (size_t i = 0; i < I.elements.size(); ++i)
@@ -642,7 +642,7 @@ Value dispatch_glsl_std_450(uint32_t inst_id, const std::vector<Value>& args,
             const Value& x = get(0); const Value& exp = get(1);
             auto op = [](const Value& xi, const Value& ei) -> Value {
                 if (xi.kind == Value::Kind::Float32)
-                    return Value::make_f32(std::ldexpf(xi.scalar.f32, ei.scalar.i32));
+                    return Value::make_f32(std::ldexp(xi.scalar.f32, ei.scalar.i32));
                 return Value::make_f64(std::ldexp(xi.scalar.f64, ei.scalar.i32));
             };
             if (x.kind == Value::Kind::Composite) {
@@ -709,7 +709,7 @@ Value dispatch_glsl_std_450(uint32_t inst_id, const std::vector<Value>& args,
             auto do_frexp = [](const Value& v) -> std::pair<Value, Value> {
                 int exp;
                 if (v.kind == Value::Kind::Float32) {
-                    float sig = std::frexpf(v.scalar.f32, &exp);
+                    float sig = std::frexp(v.scalar.f32, &exp);
                     return {Value::make_f32(sig), Value::make_i32(exp)};
                 }
                 double sig = std::frexp(v.scalar.f64, &exp);
@@ -734,7 +734,7 @@ Value dispatch_glsl_std_450(uint32_t inst_id, const std::vector<Value>& args,
             uint32_t result = 0;
             for (int i = 0; i < 4; ++i) {
                 float clamped = std::fmaxf(-1.f, std::fminf(1.f, v.elements[i].scalar.f32));
-                auto byte = static_cast<uint8_t>(static_cast<int8_t>(std::roundf(clamped * 127.f)));
+                auto byte = static_cast<uint8_t>(static_cast<int8_t>(std::round(clamped * 127.f)));
                 result |= static_cast<uint32_t>(byte) << (i * 8);
             }
             return Value::make_u32(result);
@@ -744,7 +744,7 @@ Value dispatch_glsl_std_450(uint32_t inst_id, const std::vector<Value>& args,
             uint32_t result = 0;
             for (int i = 0; i < 4; ++i) {
                 float clamped = std::fmaxf(0.f, std::fminf(1.f, v.elements[i].scalar.f32));
-                result |= static_cast<uint32_t>(static_cast<uint8_t>(std::roundf(clamped * 255.f))) << (i * 8);
+                result |= static_cast<uint32_t>(static_cast<uint8_t>(std::round(clamped * 255.f))) << (i * 8);
             }
             return Value::make_u32(result);
         }
@@ -752,7 +752,7 @@ Value dispatch_glsl_std_450(uint32_t inst_id, const std::vector<Value>& args,
             const Value& v = get(0);
             auto pack = [](float f) -> uint16_t {
                 float c = std::fmaxf(-1.f, std::fminf(1.f, f));
-                return static_cast<uint16_t>(static_cast<int16_t>(std::roundf(c * 32767.f)));
+                return static_cast<uint16_t>(static_cast<int16_t>(std::round(c * 32767.f)));
             };
             uint32_t lo = pack(v.elements[0].scalar.f32);
             uint32_t hi = pack(v.elements[1].scalar.f32);
@@ -762,7 +762,7 @@ Value dispatch_glsl_std_450(uint32_t inst_id, const std::vector<Value>& args,
             const Value& v = get(0);
             auto pack = [](float f) -> uint32_t {
                 float c = std::fmaxf(0.f, std::fminf(1.f, f));
-                return static_cast<uint32_t>(static_cast<uint16_t>(std::roundf(c * 65535.f)));
+                return static_cast<uint32_t>(static_cast<uint16_t>(std::round(c * 65535.f)));
             };
             return Value::make_u32(pack(v.elements[0].scalar.f32) |
                                    (pack(v.elements[1].scalar.f32) << 16));

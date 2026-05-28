@@ -56,18 +56,8 @@ jobs:
       - name: Install CMake and Ninja
         uses: lukka/get-cmake@latest
 
-      - name: Download SPIRV-Tools (for spirv-as)
-        shell: pwsh
-        run: |
-          $ver = "main-windows-x64"
-          # Use the Vulkan SDK's bundled spirv-as via the SDK action, or download
-          # SPIRV-Tools from the KhronosGroup release.
-          # For simplicity, grab a recent pre-built SDK.
-          $url = "https://github.com/KhronosGroup/SPIRV-Tools/releases/download/vulkan-sdk-1.3.268.0/SPIRV-Tools-main-windows-x64-Release.zip"
-          Invoke-WebRequest -Uri $url -OutFile spirv-tools.zip
-          Expand-Archive spirv-tools.zip -DestinationPath spirv-tools-install
-          $binDir = (Get-ChildItem -Recurse -Filter "spirv-as.exe" spirv-tools-install).DirectoryName
-          echo $binDir >> $env:GITHUB_PATH
+      - name: Install SPIRV-Tools (for spirv-as)
+        run: choco install spirv-tools -y
 
       - name: Download slangc
         shell: pwsh

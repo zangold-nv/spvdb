@@ -650,8 +650,8 @@ StopReason Interpreter::exec_arith_logic(const Instruction& inst) {
         case SpvOpFMod:
         case SpvOpFRem: result = vec_binop([&](const Value& x, const Value& y) {
             if (x.kind == Value::Kind::Float32)
-                return Value::make_f32(inst.opcode == SpvOpFRem ? std::fmodf(x.scalar.f32, y.scalar.f32)
-                                                                 : x.scalar.f32 - y.scalar.f32 * std::floorf(x.scalar.f32 / y.scalar.f32));
+                return Value::make_f32(inst.opcode == SpvOpFRem ? std::fmod(x.scalar.f32, y.scalar.f32)
+                                                                 : x.scalar.f32 - y.scalar.f32 * std::floor(x.scalar.f32 / y.scalar.f32));
             return Value::make_f64(inst.opcode == SpvOpFRem ? std::fmod(x.scalar.f64, y.scalar.f64)
                                                              : x.scalar.f64 - y.scalar.f64 * std::floor(x.scalar.f64 / y.scalar.f64));
         }); break;
@@ -1417,7 +1417,7 @@ StopReason Interpreter::exec_ext_inst(const Instruction& inst) {
             auto do_frexp = [](const Value& v, Value& exp_out) -> Value {
                 int e;
                 if (v.kind == Value::Kind::Float32) {
-                    float sig = std::frexpf(v.scalar.f32, &e);
+                    float sig = std::frexp(v.scalar.f32, &e);
                     exp_out = Value::make_i32(e);
                     return Value::make_f32(sig);
                 }
