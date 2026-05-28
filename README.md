@@ -249,55 +249,6 @@ std::vector<StackFrame> backtrace(const Session&);
 
 ---
 
-## Scriptable front-end (`spvdb-test`)
-
-`spvdb-test` is a batch driver for use with test frameworks such as
-[slang-test](https://github.com/shader-slang/slang). It reads
-`// SPVDB-CMD: <command>` directives from a source file, executes them in
-order against a pre-compiled `.spv` module, and writes FileCheck-compatible
-output (prefix `SPVDB`) to stdout.
-
-```
-spvdb-test <source_file> <compiled.spv>
-```
-
-Supported commands mirror the interactive CLI:
-`entry`, `descriptor`, `break`, `run`, `continue`, `step`, `stepi`,
-`location`, `locals`, `backtrace`, `read`.
-
-### Example (Slang test file)
-
-```slang
-//TEST:SPVDB_DEBUGGER(filecheck=SPVDB): -entry main -stage compute
-
-[shader("compute")]
-[numthreads(1,1,1)]
-void main(uniform RWStructuredBuffer<uint> a,
-          uniform RWStructuredBuffer<uint> b,
-          uniform RWStructuredBuffer<uint> out)
-{
-    uint x = a[0];
-    uint y = b[0];
-    out[0] = x + y;
-}
-
-// SPVDB-CMD: descriptor 0 0 [7]
-// SPVDB-CMD: descriptor 0 1 [5]
-// SPVDB-CMD: descriptor 0 2 [0]
-// SPVDB-CMD: break shader.slang 10
-// SPVDB-CMD: run
-// SPVDB-CMD: locals
-// SPVDB-CMD: run
-// SPVDB-CMD: read 0 2
-
-// SPVDB: stopped: Breakpoint
-// SPVDB: local: x = 7
-// SPVDB: stopped: EntryFinished
-// SPVDB: read[0][2]: [12]
-```
-
----
-
 ## Project layout
 
 ```
@@ -309,8 +260,6 @@ spvdb/
 │   ├── module/         Module and instruction representation
 │   └── interpreter/    Execution engine + GLSL.std.450 + image sampler
 ├── cli/                Interactive REPL (replxx-based)
-├── tools/
-│   └── spvdb-test/     Scriptable batch front-end
 ├── tests/
 │   ├── unit/           Catch2 unit tests
 │   ├── spirv/          Hand-written SPIR-V assembly test fixtures

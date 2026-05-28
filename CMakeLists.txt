@@ -115,7 +115,6 @@ target_compile_options(spvdb PRIVATE
 
 if(SPVDB_IS_TOPLEVEL)
     add_subdirectory(cli)
-    add_subdirectory(tools/spvdb-test)
     enable_testing()
     add_subdirectory(tests)
 endif()
