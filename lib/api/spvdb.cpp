@@ -290,7 +290,13 @@ Result<void> set_descriptor_json(Session& s, uint32_t set, uint32_t binding,
                     }
                 }
 
-                Value val = json_to_value(j, effective_type);
+                Value val;
+                try {
+                    val = json_to_value(j, effective_type);
+                } catch (std::exception& e) {
+                    return Result<void>::err(
+                        std::string("JSON → SPIR-V value conversion failed: ") + e.what());
+                }
                 if (wrap_in_struct)
                     val = Value::make_composite({std::move(val)});
                 return s.interp.set_descriptor(set, binding, val);

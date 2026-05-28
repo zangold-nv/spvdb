@@ -24,15 +24,19 @@ jobs:
 
       - name: Download slangc
         run: |
-          SLANG_TAG="v2025.6.3"
+          SLANG_TAG="v2026.4.1"
           curl -fsSL \
             "https://github.com/shader-slang/slang/releases/download/${SLANG_TAG}/slang-${SLANG_TAG#v}-linux-x86_64.tar.gz" \
             -o slang.tar.gz
           mkdir -p slang-install
           tar -xzf slang.tar.gz -C slang-install
-          # slangc is in bin/ inside the archive
-          echo "$PWD/slang-install/bin" >> "$GITHUB_PATH"
-          echo "SLANG_DIR=$PWD/slang-install" >> "$GITHUB_ENV"
+          # slangc is in bin/ inside the archive root or a versioned subdirectory
+          BIN_DIR=$(find slang-install -name slangc -type f 2>/dev/null | head -1 | xargs dirname || echo "")
+          if [ -z "$BIN_DIR" ]; then
+            echo "ERROR: slangc not found in archive" && exit 1
+          fi
+          echo "$BIN_DIR" >> "$GITHUB_PATH"
+          echo "SLANG_DIR=$(dirname $BIN_DIR)" >> "$GITHUB_ENV"
 
       - name: Configure
         run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
@@ -56,16 +60,21 @@ jobs:
       - name: Install CMake and Ninja
         uses: lukka/get-cmake@latest
 
-      - name: Install Vulkan SDK (includes spirv-as)
-        uses: humbletim/setup-vulkan-sdk@v1.2.0
-        with:
-          vulkan-query-version: 1.3.268.0
-          vulkan-use-cache: true
+      - name: Install spirv-tools via vcpkg
+        run: vcpkg install spirv-tools:x64-windows
+
+      - name: Add spirv-tools to PATH
+        shell: pwsh
+        run: |
+          $tools = Get-ChildItem -Recurse -Filter "spirv-as.exe" "C:\vcpkg\installed" |
+                   Select-Object -First 1 -ExpandProperty DirectoryName
+          if (-not $tools) { Write-Error "spirv-as.exe not found"; exit 1 }
+          echo $tools >> $env:GITHUB_PATH
 
       - name: Download slangc
         shell: pwsh
         run: |
-          $tag = "v2025.6.3"
+          $tag = "v2026.4.1"
           $ver = $tag.TrimStart("v")
           $url = "https://github.com/shader-slang/slang/releases/download/$tag/slang-$ver-windows-x86_64.zip"
           Invoke-WebRequest -Uri $url -OutFile slang.zip
