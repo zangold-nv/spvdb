@@ -65,9 +65,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install CMake and Ninja
-        uses: lukka/get-cmake@latest
-
       - name: Install Vulkan SDK (includes spirv-as)
         shell: pwsh
         run: |
