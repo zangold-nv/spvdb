@@ -94,7 +94,7 @@ TEST_CASE("interpreter: entry point enumeration") {
     CHECK(eps[0].execution_model == ExecutionModel::GLCompute);
 }
 
-TEST_CASE("interpreter: copy_uint — output[0] == input[0]") {
+TEST_CASE("interpreter: copy_uint - output[0] == input[0]") {
     auto mod = load_module_from_file(spv("copy_uint"));
     REQUIRE(mod);
 
@@ -113,7 +113,7 @@ TEST_CASE("interpreter: copy_uint — output[0] == input[0]") {
     CHECK(out[0] == 42u);
 }
 
-TEST_CASE("interpreter: add_uint — output[0] == input[0] + input[1]") {
+TEST_CASE("interpreter: add_uint - output[0] == input[0] + input[1]") {
     auto mod = load_module_from_file(spv("add_uint"));
     REQUIRE(mod);
 
@@ -132,7 +132,7 @@ TEST_CASE("interpreter: add_uint — output[0] == input[0] + input[1]") {
     CHECK(out[0] == 20u);
 }
 
-TEST_CASE("interpreter: add_uint — multiple invocations produce independent results") {
+TEST_CASE("interpreter: add_uint - multiple invocations produce independent results") {
     auto mod = load_module_from_file(spv("add_uint"));
     REQUIRE(mod);
 
@@ -151,7 +151,7 @@ TEST_CASE("interpreter: add_uint — multiple invocations produce independent re
     }
 }
 
-TEST_CASE("interpreter: loop_sum_inline — sums 4 elements via inline loop") {
+TEST_CASE("interpreter: loop_sum_inline - sums 4 elements via inline loop") {
     auto mod = load_module_from_file(spv("loop_sum_inline"));
     REQUIRE(mod);
 
@@ -170,7 +170,7 @@ TEST_CASE("interpreter: loop_sum_inline — sums 4 elements via inline loop") {
     CHECK(out[0] == 100u);
 }
 
-TEST_CASE("interpreter: loop_sum — sums 4 elements via loop and function call") {
+TEST_CASE("interpreter: loop_sum - sums 4 elements via loop and function call") {
     auto mod = load_module_from_file(spv("loop_sum"));
     REQUIRE(mod);
 
@@ -189,7 +189,7 @@ TEST_CASE("interpreter: loop_sum — sums 4 elements via loop and function call"
     CHECK(out[0] == 100u);
 }
 
-TEST_CASE("interpreter: spec_const — default multiplier (3) applied") {
+TEST_CASE("interpreter: spec_const - default multiplier (3) applied") {
     auto mod = load_module_from_file(spv("spec_const"));
     REQUIRE(mod);
 
@@ -207,7 +207,7 @@ TEST_CASE("interpreter: spec_const — default multiplier (3) applied") {
     CHECK(out[0] == 21u);  // 7 * 3
 }
 
-TEST_CASE("interpreter: spec_const — overridden multiplier applied") {
+TEST_CASE("interpreter: spec_const - overridden multiplier applied") {
     auto mod = load_module_from_file(spv("spec_const"));
     REQUIRE(mod);
 
@@ -253,7 +253,7 @@ TEST_CASE("interpreter: step_instruction advances through copy_uint") {
     CHECK(out[0] == 99u);
 }
 
-TEST_CASE("interpreter: breakpoint on result id — no match, run to completion") {
+TEST_CASE("interpreter: breakpoint on result id - no match, run to completion") {
     auto mod = load_module_from_file(spv("add_uint"));
     REQUIRE(mod);
 
@@ -263,7 +263,7 @@ TEST_CASE("interpreter: breakpoint on result id — no match, run to completion"
     REQUIRE(set_descriptor_json(**sess, 0, 0, json_u32({3, 4})));
     REQUIRE(set_descriptor_json(**sess, 0, 1, json_u32({0})));
 
-    // id 0 won't match any real result id — run should finish normally.
+    // id 0 won't match any real result id -run should finish normally.
     set_breakpoint_at_id(**sess, 0);
     auto reason = run(**sess);
     if (reason == StopReason::Panic)
@@ -274,7 +274,7 @@ TEST_CASE("interpreter: breakpoint on result id — no match, run to completion"
     CHECK(out[0] == 7u);
 }
 
-TEST_CASE("interpreter: fragment passthrough — input location 0 copied to output") {
+TEST_CASE("interpreter: fragment passthrough - input location 0 copied to output") {
     auto mod = load_module_from_file(spv("passthrough_frag"));
     REQUIRE(mod);
 
@@ -306,7 +306,7 @@ TEST_CASE("interpreter: fragment passthrough — input location 0 copied to outp
     CHECK(outs[0].value.elements[3].scalar.f32 == 1.0f);
 }
 
-TEST_CASE("interpreter: image sampling — no image bound returns zero without panic") {
+TEST_CASE("interpreter: image sampling - no image bound returns zero without panic") {
     auto mod = load_module_from_file(spv("image_sample_frag"));
     REQUIRE(mod);
 
@@ -333,7 +333,7 @@ TEST_CASE("interpreter: image sampling — no image bound returns zero without p
     CHECK(outs[0].value.elements[3].scalar.f32 == 0.0f);
 }
 
-TEST_CASE("interpreter: image sampling — 1x1 red BMP returns red pixel") {
+TEST_CASE("interpreter: image sampling - 1x1 red BMP returns red pixel") {
     auto mod = load_module_from_file(spv("image_sample_frag"));
     REQUIRE(mod);
 
@@ -345,7 +345,7 @@ TEST_CASE("interpreter: image sampling — 1x1 red BMP returns red pixel") {
     REQUIRE(!img_path.empty());
     REQUIRE(set_image(**sess, 0, 0, img_path));
 
-    // UV = (0.5, 0.5) — for a 1×1 image, any UV resolves to the single texel.
+    // UV = (0.5, 0.5) -for a 1×1 image, any UV resolves to the single texel.
     Value uv = Value::make_composite({Value::make_f32(0.5f), Value::make_f32(0.5f)});
     REQUIRE(set_input_location(**sess, 0, uv));
 
@@ -365,7 +365,7 @@ TEST_CASE("interpreter: image sampling — 1x1 red BMP returns red pixel") {
     CHECK(outs[0].value.elements[3].scalar.f32 == Catch::Approx(1.0f).margin(0.01f));
 }
 
-TEST_CASE("interpreter: fragment derivative — OpDPdx returns zero (single invocation)") {
+TEST_CASE("interpreter: fragment derivative - OpDPdx returns zero (single invocation)") {
     auto mod = load_module_from_file(spv("deriv_frag"));
     REQUIRE(mod);
 
@@ -417,7 +417,7 @@ TEST_CASE("interpreter: breakpoint on result id fires before instruction execute
         FAIL("Panic: " + panic_message(**sess));
     CHECK(reason == StopReason::Breakpoint);
 
-    // Output not yet written — the store comes after the add.
+    // Output not yet written -the store comes after the add.
     auto out = read_u32s(**sess, 0, 1, 1);
     CHECK(out[0] == 0u);
 
