@@ -589,7 +589,7 @@ Value dispatch_glsl_std_450(uint32_t inst_id, const std::vector<Value>& args,
         case Modf: {
             const Value& x = get(0);
             auto do_modf = [&](float v) -> std::pair<float, float> {
-                float i; float f = std::modff(v, &i); return {f, i};
+                float i; float f = std::modf(v, &i); return {f, i};
             };
             auto do_modf64 = [&](double v) -> std::pair<double, double> {
                 double i; double f = std::modf(v, &i); return {f, i};
