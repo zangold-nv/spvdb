@@ -35,7 +35,7 @@ Supported execution models: **GLCompute**, **Vertex**, **Fragment**.
 ### Cloning
 
 ```bash
-git clone --recurse-submodules https://github.com/zangold/spvdb.git
+git clone --recurse-submodules https://github.com/zangold-nv/spvdb.git
 cd spvdb
 ```
 

@@ -2,8 +2,6 @@
 
 find_program(SLANGC slangc
     HINTS
-        /home/zangold/nv/slang/build/Debug/bin
-        /home/zangold/nv/slang/build/Release/bin
         $ENV{SLANG_DIR}/bin
 )
 
