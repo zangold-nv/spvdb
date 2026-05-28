@@ -1,4 +1,10 @@
+// SPVDB_SKIP_STB_IMAGE_IMPL is set by CMake when spvdb is built as a
+// subdirectory of a project that already compiles the stb_image implementation
+// (e.g. slang-test). In that case, omit the implementation here and rely on
+// the parent to provide it at link time.
+#ifndef SPVDB_SKIP_STB_IMAGE_IMPL
 #define STB_IMAGE_IMPLEMENTATION
+#endif
 #define STBI_FAILURE_USERMSG
 // Suppress warnings from stb_image internals.
 #if defined(__GNUC__) || defined(__clang__)

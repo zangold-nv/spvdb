@@ -520,8 +520,23 @@ StopReason Interpreter::step_instruction() {
 }
 
 StopReason Interpreter::run_to_breakpoint() {
+    // Record the source location where we are *starting* so that we don't
+    // immediately re-fire a breakpoint at the same line we just stopped on.
+    SourceLoc start_loc = current_source_location();
+    bool left_start_loc = !start_loc.valid(); // if no location, no skip needed
     while (!finished_ && !panicked_) {
+        // Before stepping, check if we've moved to a different source location.
+        if (!left_start_loc) {
+            SourceLoc cur = current_source_location();
+            if (cur.line != start_loc.line || cur.file != start_loc.file)
+                left_start_loc = true;
+        }
         auto r = step_instruction();
+        if (r == StopReason::Breakpoint) {
+            // Only surface the breakpoint once we've left the starting location.
+            if (left_start_loc) return r;
+            continue;
+        }
         if (r != StopReason::Step) return r;
     }
     return panicked_ ? StopReason::Panic : StopReason::EntryFinished;
@@ -1574,6 +1589,8 @@ std::vector<std::pair<std::string, Value>> Interpreter::local_variables() const 
                          : "%" + std::to_string(debug_var_id);
         result.emplace_back(std::move(name), val);
     }
+    std::sort(result.begin(), result.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
     return result;
 }
 
@@ -1632,14 +1649,33 @@ bool Interpreter::check_breakpoint_at_pc() const {
     if (pc_.instr_index >= bb.instructions.size()) return false;
 
     const Instruction& inst = bb.instructions[pc_.instr_index];
+
+    // Don't fire source breakpoints on debug metadata instructions (OpLine,
+    // OpNoLine, NonSemantic ExtInst).  The breakpoint should fire on the first
+    // *real* instruction of the target line so that DebugValue assignments and
+    // DebugScope updates that precede it on the same line have already executed
+    // and local variable state is up to date.
+    bool is_metadata = false;
+    if (inst.opcode == SpvOpLine || inst.opcode == SpvOpNoLine) {
+        is_metadata = true;
+    } else if (inst.opcode == SpvOpExtInst && inst.operand_count() >= 1) {
+        uint32_t ext_set_id = inst.operand(0);
+        auto eit = module_->ext_imports.find(ext_set_id);
+        if (eit != module_->ext_imports.end() &&
+            eit->second.rfind("NonSemantic.", 0) == 0)
+            is_metadata = true;
+    }
+
     SourceLoc loc = (pc_.instr_index < bb.source_locs.size())
                     ? bb.source_locs[pc_.instr_index] : SourceLoc{};
 
     for (const auto& bp : breakpoints_) {
         if (!bp.active) continue;
-        // Result-id breakpoint.
+        // Result-id breakpoints always fire regardless of instruction type.
         if (bp.result_id != 0 && inst.result_id == bp.result_id)
             return true;
+        // Source breakpoints skip metadata instructions.
+        if (is_metadata) continue;
         // Source breakpoint: match file suffix + line.
         if (!bp.file.empty() && bp.line != 0 && loc.line == bp.line) {
             // Accept if the recorded file ends with the requested file path
@@ -1658,13 +1694,15 @@ StopReason Interpreter::step_source_line() {
     SourceLoc start_loc = current_source_location();
     while (!finished_ && !panicked_) {
         auto r = step_instruction();
-        if (r != StopReason::Step) return r;
+        // Always propagate fatal results.
+        if (r == StopReason::Panic || r == StopReason::EntryFinished) return r;
         SourceLoc new_loc = current_source_location();
         // If we didn't have a starting location, any instruction advance suffices.
-        if (!start_loc.valid()) return StopReason::Step;
-        // Stop when we've moved to a different source line.
+        if (!start_loc.valid()) return r;
+        // Only stop (for Step or Breakpoint) once we've moved to a different line.
         if (new_loc.line != start_loc.line || new_loc.file != start_loc.file)
-            return StopReason::Step;
+            return r;
+        // Still on the starting line — suppress Breakpoint and keep stepping.
     }
     return panicked_ ? StopReason::Panic : StopReason::EntryFinished;
 }
@@ -1674,13 +1712,13 @@ StopReason Interpreter::step_over_source_line() {
     size_t start_depth = call_stack_.size();
     while (!finished_ && !panicked_) {
         auto r = step_instruction();
-        if (r != StopReason::Step) return r;
+        if (r == StopReason::Panic || r == StopReason::EntryFinished) return r;
         // Don't evaluate the source location if we've descended into a callee.
         if (call_stack_.size() > start_depth) continue;
         SourceLoc new_loc = current_source_location();
-        if (!start_loc.valid()) return StopReason::Step;
+        if (!start_loc.valid()) return r;
         if (new_loc.line != start_loc.line || new_loc.file != start_loc.file)
-            return StopReason::Step;
+            return r;
     }
     return panicked_ ? StopReason::Panic : StopReason::EntryFinished;
 }
