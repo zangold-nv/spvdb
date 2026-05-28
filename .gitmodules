@@ -1,0 +1,12 @@
+[submodule "third_party/SPIRV-Headers"]
+    path = third_party/SPIRV-Headers
+    url = https://github.com/KhronosGroup/SPIRV-Headers.git
+[submodule "Catch2"]
+	path = third_party/Catch2
+	url = https://github.com/catchorg/Catch2
+[submodule "nlohmann_json"]
+	path = third_party/nlohmann_json
+	url = https://github.com/nlohmann/json
+[submodule "replxx"]
+	path = third_party/replxx
+	url = https://github.com/AmokHuginnsson/replxx
