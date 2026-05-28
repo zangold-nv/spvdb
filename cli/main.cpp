@@ -651,6 +651,24 @@ static void cmd_set_specconst(const std::vector<std::string>& args) {
 
 // ---- dispatch --------------------------------------------------------------
 
+static bool dispatch(const std::string& line); // forward declaration
+
+static void cmd_source(const std::vector<std::string>& args) {
+    if (args.size() < 2) { std::cout << "Usage: source <file>\n"; return; }
+    std::ifstream f(args[1]);
+    if (!f) { std::cerr << "Cannot open file: " << args[1] << "\n"; return; }
+    std::string line;
+    while (std::getline(f, line)) {
+        // Strip leading whitespace and skip blank lines and comments.
+        auto start = line.find_first_not_of(" \t\r");
+        if (start == std::string::npos) continue;
+        if (line[start] == '#') continue;
+        std::string trimmed = line.substr(start);
+        std::cout << "(spvdb) " << trimmed << "\n";
+        if (!dispatch(trimmed)) break;
+    }
+}
+
 static bool dispatch(const std::string& line) {
     auto tokens = split(line);
     if (tokens.empty()) return true;
@@ -684,6 +702,7 @@ static bool dispatch(const std::string& line) {
         if (tokens.size() > 1 && tokens[1] == "specconst") { cmd_set_specconst(tokens); return true; }
         std::cout << "set subcommands: input, builtin, specconst\n"; return true;
     }
+    if (cmd == "source")                        { cmd_source(tokens); return true; }
     if (cmd == "disassemble" || cmd == "dis") { cmd_disassemble(); return true; }
     if (cmd == "list" || cmd == "l")          { cmd_list(tokens);  return true; }
     if (cmd == "help" || cmd == "h" || cmd == "?") {
@@ -710,6 +729,7 @@ static bool dispatch(const std::string& line) {
             "  set input loc <loc> <json>    Bind input by Location decoration\n"
             "  set builtin <name> <val>      Set a built-in value\n"
             "  set specconst <id> <val>      Override a spec constant\n"
+            "  source <file>                 Execute commands from a script file\n"
             "  disassemble / dis             Show SPIR-V near current instruction\n"
             "  list [line] / l [line]        Show source lines near current location\n"
             "  quit / q                      Exit\n";
