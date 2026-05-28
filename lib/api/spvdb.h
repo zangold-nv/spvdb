@@ -79,6 +79,15 @@ void                 remove_breakpoint(Session&, BreakpointId);
 
 // ---- Execution control (StopReason from interpreter.h) --------------------
 
+// Restart resets execution to the entry point, re-applying all staged
+// descriptor/builtin/spec-constant bindings and preserving breakpoints.
+// Prefer this over creating a new Session when you want to re-run with the
+// same inputs.
+Result<void> restart(Session&);
+
+bool is_finished(const Session&);
+bool is_panicked(const Session&);
+
 StopReason run(Session&);
 StopReason step(Session&);
 StopReason step_instruction(Session&);

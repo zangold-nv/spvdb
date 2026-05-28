@@ -186,6 +186,7 @@ private:
     bool        finished_ = false;
     bool        panicked_ = false;
     std::string panic_msg_;
+    std::string entry_name_;
 
     // ---- helpers -----------------------------------------------------------
     void        panic(const std::string& msg);

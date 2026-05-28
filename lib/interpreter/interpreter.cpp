@@ -262,10 +262,12 @@ Result<void> Interpreter::begin(const std::string& entry_name) {
         return Result<void>::err("Entry point not found: " + entry_name);
 
     entry_function_id_ = ep->function_id;
+    entry_name_ = entry_name;
     finished_  = false;
     panicked_  = false;
     panic_msg_ = {};
     id_map_.clear();
+    call_stack_.clear();
     debug_var_values_.clear();
     current_scope_id_     = 0;
     current_inlined_at_id_ = 0;
@@ -349,7 +351,7 @@ Result<void> Interpreter::begin(const std::string& entry_name) {
 Result<void> Interpreter::restart() {
     id_map_.clear();
     call_stack_.clear();
-    return begin(module_->name_of(entry_function_id_));
+    return begin(entry_name_);
 }
 
 Result<void> Interpreter::set_descriptor(uint32_t set, uint32_t binding, const Value& value) {

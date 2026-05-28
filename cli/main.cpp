@@ -295,10 +295,16 @@ static void cmd_entry(const std::vector<std::string>& args) {
 static void cmd_run() {
     if (!g_module) { std::cout << "No module loaded.\n"; return; }
     if (g_entry.empty()) { std::cout << "No entry point selected. Use: entry <name>\n"; return; }
-    // (Re)create session and run.
-    auto r = create_session(g_module, g_entry);
-    if (!r) { std::cerr << "Error: " << r.error().message << "\n"; return; }
-    g_session = std::move(*r);
+    // Reuse the existing session (preserving descriptor bindings and
+    // breakpoints) if one exists; only create a fresh one if we don't have one.
+    if (g_session) {
+        auto r = spvdb::restart(*g_session);
+        if (!r) { std::cerr << "Error restarting session: " << r.error().message << "\n"; return; }
+    } else {
+        auto r = create_session(g_module, g_entry);
+        if (!r) { std::cerr << "Error: " << r.error().message << "\n"; return; }
+        g_session = std::move(*r);
+    }
     auto reason = spvdb::run(*g_session);
     switch (reason) {
         case StopReason::EntryFinished: std::cout << "Program finished normally.\n"; break;

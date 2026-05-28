@@ -374,6 +374,13 @@ static StopReason ensure_and_run(Session& s, Fn fn) {
     return to_public(fn());
 }
 
+Result<void> restart(Session& s) {
+    s.started = false;
+    return s.ensure_started();
+}
+bool is_finished(const Session& s) { return s.interp.is_finished(); }
+bool is_panicked(const Session& s) { return s.interp.is_panicked(); }
+
 StopReason run(Session& s) {
     return ensure_and_run(s, [&]{ return s.interp.run_to_breakpoint(); });
 }
